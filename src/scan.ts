@@ -213,6 +213,11 @@ export async function scan(opts: ScanOptions): Promise<ScanResult> {
       `Will run about ${labelCalls + 1} ${analyzer.callName} calls with ${modelLabel(model)} (${labelCalls} labeling batches for ${pending} new sessions, ${sessions.length - pending} cached; 1 grouping), plus one per repeated workflow found. Calls use your own ${analyzer.loginName} login and send scrubbed prompt excerpts, never whole transcripts.`,
     )
   }
+  log(
+    analyzer
+      ? `Nothing is sent to FriskAI: no account, no telemetry. Only the ${analyzer.callName} calls above leave this machine.`
+      : 'Nothing is sent to FriskAI or anywhere else: no account, no telemetry. Your session data stays on this machine.',
+  )
   if (needsConfirm) {
     if (!opts.yes) {
       if (!opts.confirm && !process.stdin.isTTY) {

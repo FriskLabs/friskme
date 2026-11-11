@@ -541,7 +541,7 @@ ${r.sensitive.model ? `<li><b>pii model</b> ${esc(r.sensitive.model.name)} at re
 <li><b>history</b> Claude Code deletes transcripts older than <code>cleanupPeriodDays</code> (30 by default), so this covers about a month at most.</li>
 </ul>
 
-<footer>// For teams: the same view across every developer and agent, in <a href="${esc(FRISKAI_URL)}">FriskAI</a>.</footer>
+<footer>// This report was made on your machine. Nothing was sent to FriskAI.<br>// For teams: the same view across every developer and agent, in <a href="${esc(FRISKAI_URL)}">FriskAI</a>.</footer>
 </main>
 </body>
 </html>

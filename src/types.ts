@@ -1,3 +1,20 @@
+/** The coding agents frisk reads. Each one has an adapter in `src/agents/`. */
+export const AGENT_IDS = ['claude', 'codex'] as const
+export type AgentId = (typeof AGENT_IDS)[number]
+
+/**
+ * What a tool step did, in an agent-neutral vocabulary. Adapters map their own
+ * tool names onto it so detectors never match on a specific agent's names.
+ */
+export type ToolKind =
+  | 'shell'
+  | 'edit'
+  | 'read'
+  | 'subagent'
+  | 'mcp'
+  | 'plan'
+  | 'other'
+
 /** One API usage record, deduplicated by `message.id`. */
 export type TokenTotals = {
   input: number
@@ -8,7 +25,9 @@ export type TokenTotals = {
 }
 
 export type ToolStep = {
+  /** The agent's own tool name (`Bash`, `exec_command`); MCP tools are `mcp`. */
   tool: string
+  kind: ToolKind
   /** Coarse detail: Bash command family, file extension, MCP server, subagent type. */
   detail: string | null
   isError: boolean
@@ -27,6 +46,7 @@ export type PromptSource =
 
 export type Prompt = { text: string; ts: string; source: PromptSource }
 
+/** One shell command the agent ran (Bash, exec_command, …). */
 export type BashRun = {
   /** Whitespace-collapsed command. Local only; never sent to a model. */
   normalized: string
@@ -38,6 +58,7 @@ export type MessageUsage = { model: string; totals: TokenTotals }
 
 export type Session = {
   id: string
+  agent: AgentId
   /** The `cwd` on the first line that has one. Never decoded from the dir name. */
   project: string
   projectLabel: string
@@ -75,6 +96,8 @@ export type ParseStats = {
   malformedLines: number
   ignoredLineTypes: Record<string, number>
   unknownLineTypes: Record<string, number>
+  /** Files found and sessions kept, per agent that was scanned. */
+  byAgent: Partial<Record<AgentId, { files: number; sessions: number }>>
 }
 
 export function emptyTotals(): TokenTotals {

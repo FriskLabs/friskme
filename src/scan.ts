@@ -1,12 +1,15 @@
 import { chmodSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline/promises'
+import { ALL_AGENTS } from './agents/registry.ts'
+import type { AgentId, SourceRoot } from './agents/types.ts'
 import { Cache } from './cache.ts'
 import { buildCard } from './card/build-card.ts'
 import type { ScrubCounts } from './card/scrub-secrets.ts'
 import { FRISK_VERSION } from './constants.ts'
 import { loadSessions } from './discover.ts'
-import { ClaudeRunner, type SpawnFn } from './llm/claude-runner.ts'
+import { ClaudeRunner } from './llm/claude-runner.ts'
+import { CodexRunner } from './llm/codex-runner.ts'
 import { runGroupPass } from './llm/group-pass.ts'
 import {
   batchCount,
@@ -17,6 +20,14 @@ import {
 import { progressBar, runPool } from './llm/pool.ts'
 import { preflight } from './llm/preflight.ts'
 import { type GroupedIntent, SYSTEM_PROMPT } from './llm/prompts.ts'
+import {
+  ANALYZERS,
+  type AnalyzerId,
+  cacheModelKey,
+  type ModelRunner,
+  modelLabel,
+  type SpawnFn,
+} from './llm/runner.ts'
 import { draftSkill, findWorkflow } from './llm/skill-pass.ts'
 import {
   aggregate,
@@ -47,13 +58,17 @@ import type { Session } from './types.ts'
 export const CONCURRENCY = 4
 
 export type ScanOptions = {
-  root: string
+  /** The agents to read and where; see `agents/registry.ts`. */
+  sources: SourceRoot[]
   cacheDir: string
   sinceMs: number
   sinceLabel: string
   project?: string
   maxSessions?: number
-  model: string
+  /** Which CLI labels sessions; by default the first one logged in (claude, then codex). */
+  analyzer?: AnalyzerId
+  /** Model for the analyzer; by default the analyzer's own (`haiku` / Codex's default). */
+  model?: string
   noLlm: boolean
   outDir: string
   json: boolean
@@ -94,14 +109,24 @@ export async function scan(opts: ScanOptions): Promise<ScanResult> {
   const now = opts.now ?? (() => new Date())
 
   let binary: string | null = null
+  let analyzerId: AnalyzerId | null = null
   if (!opts.noLlm) {
-    const pf = await preflight({ which: opts.which, spawn: opts.spawn })
+    const pf = await preflight({
+      analyzer: opts.analyzer,
+      which: opts.which,
+      spawn: opts.spawn,
+    })
     if (!pf.ok) {
       log(pf.message)
       return { exitCode: 2 }
     }
     binary = pf.binary
+    analyzerId = pf.analyzer
   }
+  const analyzer = analyzerId ? ANALYZERS[analyzerId] : null
+  const model = analyzer ? (opts.model ?? analyzer.defaultModel) : null
+  // Labels are cached per analyzer and model: the same card labeled by another model is a miss.
+  const cacheModel = analyzer ? cacheModelKey(analyzer.id, model) : ''
 
   const sensitiveOpts = {
     enabled: opts.sensitive,
@@ -123,16 +148,23 @@ export async function scan(opts: ScanOptions): Promise<ScanResult> {
   }
   const collector = createCollector(sensitiveOpts)
 
-  log(`Reading ${opts.root} (read-only)…`)
-  const { sessions, stats, filteredByProject } = await loadSessions(opts.root, {
-    sinceMs: opts.sinceMs,
-    project: opts.project,
-    maxSessions: opts.maxSessions,
-    textVisitor: collector ? (id) => collector.visitor(id) : undefined,
-  })
+  const rootList = opts.sources.map((s) => s.root).join(', ')
+  log(
+    `Reading ${rootList || '(no agent session directories found)'} (read-only)…`,
+  )
+  const { sessions, stats, filteredByProject } = await loadSessions(
+    opts.sources,
+    {
+      sinceMs: opts.sinceMs,
+      project: opts.project,
+      maxSessions: opts.maxSessions,
+      textVisitor: collector ? (id) => collector.visitor(id) : undefined,
+    },
+  )
   if (sessions.length === 0) {
+    const scanned = opts.sources.map((s) => s.source.displayName).join(', ')
     log(
-      `No sessions with a typed prompt since ${opts.sinceLabel}. Checked ${stats.files} files; ${stats.skippedOutsideWindow} were older, ${stats.skippedNoPrompt} had no typed prompt.`,
+      `No sessions with a typed prompt since ${opts.sinceLabel} (${scanned || 'no agents found'}). Checked ${stats.files} files; ${stats.skippedOutsideWindow} were older, ${stats.skippedNoPrompt} had no typed prompt.`,
     )
     return { exitCode: 1 }
   }
@@ -145,8 +177,9 @@ export async function scan(opts: ScanOptions): Promise<ScanResult> {
     (m, s) => (s.end > m ? s.end : m),
     sessions[0]!.end,
   )
+  const perAgent = agentBreakdown(sessions)
   log(
-    `Found ${sessions.length} sessions across ${projects} projects, ${formatDate(from)} → ${formatDate(to)}. Skipped ${stats.skippedNoPrompt} with no typed prompt, ${stats.skippedOutsideWindow} older than ${opts.sinceLabel}${stats.malformedLines ? `, ${stats.malformedLines} malformed lines` : ''}.`,
+    `Found ${sessions.length} sessions${perAgent} across ${projects} projects, ${formatDate(from)} → ${formatDate(to)}. Skipped ${stats.skippedNoPrompt} with no typed prompt, ${stats.skippedOutsideWindow} older than ${opts.sinceLabel}${stats.malformedLines ? `, ${stats.malformedLines} malformed lines` : ''}.`,
   )
 
   const redactions: ScrubCounts = {}
@@ -172,12 +205,12 @@ export async function scan(opts: ScanOptions): Promise<ScanResult> {
 
   const needsConfirm =
     !opts.noLlm || (modelPlan !== null && modelPlan.downloadBytes > 0)
-  if (!opts.noLlm) {
-    const pending = planLabels(jobs, new Cache(opts.cacheDir), opts.model).todo
+  if (analyzer) {
+    const pending = planLabels(jobs, new Cache(opts.cacheDir), cacheModel).todo
       .length
     const labelCalls = batchCount(pending)
     log(
-      `Will run about ${labelCalls + 1} claude -p calls with ${opts.model} (${labelCalls} labeling batches for ${pending} new sessions, ${sessions.length - pending} cached; 1 grouping), plus one per repeated workflow found. Calls use your own Claude login and send scrubbed prompt excerpts, never whole transcripts.`,
+      `Will run about ${labelCalls + 1} ${analyzer.callName} calls with ${modelLabel(model)} (${labelCalls} labeling batches for ${pending} new sessions, ${sessions.length - pending} cached; 1 grouping), plus one per repeated workflow found. Calls use your own ${analyzer.loginName} login and send scrubbed prompt excerpts, never whole transcripts.`,
     )
   }
   if (needsConfirm) {
@@ -196,7 +229,7 @@ export async function scan(opts: ScanOptions): Promise<ScanResult> {
     }
   }
 
-  let model: SensitiveReport['model'] = null
+  let nerModel: SensitiveReport['model'] = null
   if (collector && modelPlan) {
     const mp = await runModelPass({
       collector,
@@ -211,8 +244,8 @@ export async function scan(opts: ScanOptions): Promise<ScanResult> {
       progress: (label) => progressBar(label),
       log,
     })
-    model = mp.model
-    // Names the model found are masked in cards before anything reaches claude -p.
+    nerModel = mp.model
+    // Names the model found are masked in cards before anything reaches the analyzer.
     if (mp.personFingerprints.size > 0) {
       const mask = nameMasker(mp.personFingerprints, opts.salt)
       for (const s of sessions) cards.set(s.id, buildCard(s, redactions, mask))
@@ -222,20 +255,29 @@ export async function scan(opts: ScanOptions): Promise<ScanResult> {
   collector?.releaseText()
 
   mkdirSync(opts.outDir, { recursive: true })
-  const runner = binary
-    ? new ClaudeRunner({
-        binary,
-        model: opts.model,
-        systemPrompt: SYSTEM_PROMPT,
-        spawn: opts.spawn,
-      })
-    : null
+  let runner: ModelRunner | null = null
+  if (binary && analyzerId === 'claude') {
+    runner = new ClaudeRunner({
+      binary,
+      model: model ?? 'haiku',
+      systemPrompt: SYSTEM_PROMPT,
+      spawn: opts.spawn,
+    })
+  } else if (binary && analyzerId === 'codex') {
+    runner = new CodexRunner({
+      binary,
+      model,
+      systemPrompt: SYSTEM_PROMPT,
+      spawn: opts.spawn,
+    })
+  }
   let labels: Map<string, SessionLabel> | undefined
   let intents: GroupedIntent[] | undefined
   let workflows: WorkflowReport[] = []
   const llm: Report['llm'] = {
     enabled: !opts.noLlm,
-    model: opts.noLlm ? null : opts.model,
+    analyzer: analyzerId,
+    model: analyzer ? modelLabel(model) : null,
     calls: 0,
     failedCalls: 0,
     labelsFromCache: 0,
@@ -253,7 +295,7 @@ export async function scan(opts: ScanOptions): Promise<ScanResult> {
         jobs,
         runner,
         cache,
-        model: opts.model,
+        model: cacheModel,
         concurrency: CONCURRENCY,
         onProgress: progressBar('labeling sessions'),
       })
@@ -280,7 +322,7 @@ export async function scan(opts: ScanOptions): Promise<ScanResult> {
         inputs: [...counts.values()],
         runner,
         cache,
-        model: opts.model,
+        model: cacheModel,
       })
       intents = gp.intents
       llm.groupingFellBack = gp.fellBackToCategories
@@ -293,7 +335,7 @@ export async function scan(opts: ScanOptions): Promise<ScanResult> {
         cards,
         runner,
         cache,
-        model: opts.model,
+        model: cacheModel,
         outDir: opts.outDir,
         date: formatDate(now().toISOString()),
         onFail: () => llm.skillDraftsFailed++,
@@ -311,7 +353,7 @@ export async function scan(opts: ScanOptions): Promise<ScanResult> {
   const report = aggregate({
     sessions,
     stats,
-    root: opts.root,
+    roots: opts.sources.map((s) => ({ agent: s.source.id, path: s.root })),
     filteredByProject,
     since: opts.sinceLabel,
     generatedAt: now().toISOString(),
@@ -323,7 +365,7 @@ export async function scan(opts: ScanOptions): Promise<ScanResult> {
     sensitive: buildSensitiveReport({
       collector,
       sessions,
-      model,
+      model: nerModel,
       reveal: opts.reveal,
     }),
   })
@@ -356,7 +398,7 @@ async function draftWorkflows(opts: {
   labels: Map<string, SessionLabel>
   intents: GroupedIntent[]
   cards: Map<string, string>
-  runner: ClaudeRunner
+  runner: ModelRunner
   cache: Cache
   model: string
   outDir: string
@@ -461,4 +503,16 @@ export function structuralWorkflows(
     remaining = remaining.filter((s) => !taken.has(s.id))
   }
   return out
+}
+
+/** ` (Claude Code 12, Codex 4)` when more than one agent contributed, else ''. */
+export function agentBreakdown(sessions: Session[]): string {
+  const counts = new Map<AgentId, number>()
+  for (const s of sessions) counts.set(s.agent, (counts.get(s.agent) ?? 0) + 1)
+  if (counts.size < 2) return ''
+  // Registry order, so the line reads the same every run.
+  const parts = ALL_AGENTS.filter((a) => counts.has(a.id)).map(
+    (a) => `${a.displayName} ${counts.get(a.id)}`,
+  )
+  return ` (${parts.join(', ')})`
 }

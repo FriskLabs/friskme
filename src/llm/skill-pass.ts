@@ -1,7 +1,6 @@
 import { type Cache, sha256 } from '../cache.ts'
 import { stepKey } from '../parse/tool-step.ts'
 import type { ToolStep } from '../types.ts'
-import type { ClaudeRunner } from './claude-runner.ts'
 import {
   PROMPT_VERSION,
   SKILL_SCHEMA,
@@ -9,6 +8,7 @@ import {
   skillPrompt,
   skillValidator,
 } from './prompts.ts'
+import type { ModelRunner } from './runner.ts'
 
 export const MIN_SKILL_SESSIONS = 4
 export const SIMILARITY_THRESHOLD = 0.8
@@ -87,7 +87,7 @@ export function findWorkflow(
 export async function draftSkill(opts: {
   intent: { name: string; description: string }
   cards: string[]
-  runner: ClaudeRunner
+  runner: ModelRunner
   cache: Cache
   model: string
 }): Promise<{ draft: SkillDraft | null; cached: boolean; reason?: string }> {

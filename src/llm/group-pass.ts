@@ -1,5 +1,4 @@
 import { type Cache, sha256 } from '../cache.ts'
-import type { ClaudeRunner } from './claude-runner.ts'
 import {
   GROUP_SCHEMA,
   type GroupedIntent,
@@ -8,6 +7,7 @@ import {
   groupValidator,
   PROMPT_VERSION,
 } from './prompts.ts'
+import type { ModelRunner } from './runner.ts'
 
 export type GroupPassResult = {
   intents: GroupedIntent[]
@@ -26,7 +26,7 @@ export const OTHER_INTENT = 'Other work'
  */
 export async function runGroupPass(opts: {
   inputs: GroupInput[]
-  runner: ClaudeRunner
+  runner: ModelRunner
   cache: Cache
   model: string
 }): Promise<GroupPassResult> {

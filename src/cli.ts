@@ -1,15 +1,17 @@
 #!/usr/bin/env bun
 import { resolve } from 'node:path'
 import { parseArgs } from 'node:util'
+import { parseAgentList, resolveSources } from './agents/registry.ts'
+import type { AgentId } from './agents/types.ts'
 import { Cache, cacheRoot } from './cache.ts'
 import { FRISK_VERSION } from './constants.ts'
-import { projectsRoot } from './discover.ts'
+import { type AnalyzerId, parseAnalyzer } from './llm/runner.ts'
 import { scan } from './scan.ts'
 import { loadSalt } from './sensitive/mask.ts'
 import { modelsCommand } from './sensitive/model/models-command.ts'
 import { runNerWorker } from './sensitive/model/ner.ts'
 
-export const HELP = `frisk ${FRISK_VERSION}: what your Claude Code sessions were actually for
+export const HELP = `frisk ${FRISK_VERSION}: what your coding-agent sessions were actually for
 
 Usage:
   frisk [scan] [options]     Analyze recent sessions and write a report (default)
@@ -18,10 +20,15 @@ Usage:
                              Manage the optional PII model (~/.frisk/models)
 
 Options:
+  --agent <list>               Agents to read: claude, codex, or both comma-separated
+                               (default: every agent whose session folder exists)
   --since <30d|4w|YYYY-MM-DD>  Only sessions active since then (default 30d)
   --project <substring>        Only sessions whose working directory contains this
   --max-sessions <n>           Analyze at most the n most recent sessions
-  --model <name>               Model for claude -p calls (default haiku)
+  --analyzer <claude|codex>    CLI that labels sessions: claude -p or codex exec
+                               (default: claude if logged in, else codex)
+  --model <name>               Model for the analyzer (default: haiku for claude,
+                               Codex's own default for codex)
   --no-llm                     Skip all model calls; deterministic sections only
   --out <dir>                  Output directory (default ./frisk-report)
   --json                       Print report.json to stdout (summary goes to stderr)
@@ -32,11 +39,13 @@ Options:
                                replies. all: also tool input and output (slow)
   --reveal                     Show secrets and personal data unmasked in the
                                report (files are written 0600; do not share)
-  -y, --yes                    Do not ask before claude -p calls or downloads
+  -y, --yes                    Do not ask before model calls or downloads
   -h, --help                   Show this help
   -v, --version                Show the version
 
-Reads ${'$'}CLAUDE_CONFIG_DIR/projects or ~/.claude/projects, read-only.
+Reads, read-only:
+  Claude Code  ${'$'}CLAUDE_CONFIG_DIR/projects or ~/.claude/projects
+  Codex        ${'$'}CODEX_HOME/sessions or ~/.codex/sessions
 `
 
 /** `30d`, `4w`, `12h` or an ISO date → epoch ms. */
@@ -62,10 +71,12 @@ export async function main(argv: string[]): Promise<number> {
       args: argv,
       allowPositionals: true,
       options: {
+        agent: { type: 'string' },
         since: { type: 'string', default: '30d' },
         project: { type: 'string' },
         'max-sessions': { type: 'string' },
-        model: { type: 'string', default: 'haiku' },
+        analyzer: { type: 'string' },
+        model: { type: 'string' },
         'no-llm': { type: 'boolean', default: false },
         out: { type: 'string', default: './frisk-report' },
         json: { type: 'boolean', default: false },
@@ -134,6 +145,26 @@ export async function main(argv: string[]): Promise<number> {
     }
   }
 
+  let agents: AgentId[] | undefined
+  if (v.agent !== undefined) {
+    try {
+      agents = parseAgentList(String(v.agent))
+    } catch (err) {
+      process.stderr.write(`${(err as Error).message}\n`)
+      return 2
+    }
+  }
+
+  let analyzer: AnalyzerId | undefined
+  if (v.analyzer !== undefined) {
+    try {
+      analyzer = parseAnalyzer(String(v.analyzer))
+    } catch (err) {
+      process.stderr.write(`${(err as Error).message}\n`)
+      return 2
+    }
+  }
+
   const scope = String(v['pii-model-scope'])
   if (scope !== 'prompts' && scope !== 'all') {
     process.stderr.write('--pii-model-scope: expected prompts or all\n')
@@ -141,13 +172,14 @@ export async function main(argv: string[]): Promise<number> {
   }
 
   const result = await scan({
-    root: projectsRoot(),
+    sources: resolveSources(process.env, agents),
     cacheDir: cacheRoot(),
     sinceMs,
     sinceLabel: String(v.since),
     project: v.project as string | undefined,
     maxSessions,
-    model: String(v.model),
+    analyzer,
+    model: v.model === undefined ? undefined : String(v.model),
     noLlm: Boolean(v['no-llm']),
     outDir: resolve(String(v.out)),
     json: Boolean(v.json),

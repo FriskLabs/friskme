@@ -1,0 +1,2 @@
+{"timestamp": "2026-11-05T10:06:00.000Z", "type": "session_meta", "payload": {"id": "dddddddd-dddd-4ddd-8ddd-dddddddddddd", "session_id": "dddddddd-dddd-4ddd-8ddd-dddddddddddd", "timestamp": "2026-11-05T10:06:00.000Z", "cwd": "/tmp/frisk-abc", "originator": "codex_cli_rs", "cli_version": "0.200.0", "source": "exec", "model_provider": "openai"}}
+{"timestamp": "2026-11-05T10:06:01.000Z", "type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "[frisk-cli:v1]\nLabel these sessions."}]}}

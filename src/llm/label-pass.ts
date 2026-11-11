@@ -1,6 +1,5 @@
 import { type Cache, labelKey } from '../cache.ts'
 import type { WorkCategory } from '../constants.ts'
-import type { ClaudeRunner } from './claude-runner.ts'
 import { runPool } from './pool.ts'
 import {
   LABEL_SCHEMA,
@@ -9,6 +8,7 @@ import {
   labelValidator,
   PROMPT_VERSION,
 } from './prompts.ts'
+import type { ModelRunner } from './runner.ts'
 
 export const LABEL_BATCH_SIZE = 30
 
@@ -57,7 +57,7 @@ export function batchCount(n: number): number {
  */
 export async function runLabelPass(opts: {
   jobs: LabelJob[]
-  runner: ClaudeRunner
+  runner: ModelRunner
   cache: Cache
   model: string
   concurrency: number

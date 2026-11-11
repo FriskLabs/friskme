@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { mkdtempSync, rmSync } from 'node:fs'
+import {
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Cache, labelKey } from '../cache.ts'
@@ -10,6 +16,7 @@ import {
   type SpawnFn,
   type SpawnResult,
 } from './claude-runner.ts'
+import { CodexRunner } from './codex-runner.ts'
 import { groupByCategory, OTHER_INTENT, runGroupPass } from './group-pass.ts'
 import { LABEL_BATCH_SIZE, planLabels, runLabelPass } from './label-pass.ts'
 import { preflight } from './preflight.ts'
@@ -199,7 +206,7 @@ describe('ClaudeRunner', () => {
 
 describe('preflight', () => {
   test('missing claude binary', async () => {
-    const pf = await preflight({ which: () => null })
+    const pf = await preflight({ analyzer: 'claude', which: () => null })
     expect(pf.ok).toBe(false)
     expect(pf.ok ? '' : pf.message).toContain('--no-llm')
   })
@@ -208,7 +215,11 @@ describe('preflight', () => {
     const { spawn } = fakeSpawn([
       { exitCode: 1, stdout: '{"loggedIn":false}', stderr: '' },
     ])
-    const pf = await preflight({ which: () => '/bin/claude', spawn })
+    const pf = await preflight({
+      analyzer: 'claude',
+      which: () => '/bin/claude',
+      spawn,
+    })
     expect(pf.ok).toBe(false)
     expect(pf.ok ? '' : pf.message).toContain('claude auth login')
   })
@@ -217,9 +228,15 @@ describe('preflight', () => {
     const { spawn } = fakeSpawn([
       { exitCode: 0, stdout: '{"loggedIn":false}', stderr: '' },
     ])
-    expect((await preflight({ which: () => '/bin/claude', spawn })).ok).toBe(
-      false,
-    )
+    expect(
+      (
+        await preflight({
+          analyzer: 'claude',
+          which: () => '/bin/claude',
+          spawn,
+        })
+      ).ok,
+    ).toBe(false)
   })
 
   test('logged in', async () => {
@@ -232,10 +249,195 @@ describe('preflight', () => {
     ])
     expect(await preflight({ which: () => '/bin/claude', spawn })).toEqual({
       ok: true,
+      analyzer: 'claude',
       binary: '/bin/claude',
       subscriptionType: 'max',
     })
     expect(calls[0]!.args).toEqual(['/bin/claude', 'auth', 'status'])
+  })
+
+  test('falls back to codex when claude is missing', async () => {
+    const { spawn, calls } = fakeSpawn([
+      { exitCode: 0, stdout: 'Logged in using ChatGPT', stderr: '' },
+    ])
+    const pf = await preflight({
+      which: (b) => (b === 'codex' ? '/bin/codex' : null),
+      spawn,
+    })
+    expect(pf).toEqual({
+      ok: true,
+      analyzer: 'codex',
+      binary: '/bin/codex',
+      subscriptionType: null,
+    })
+    expect(calls[0]!.args).toEqual(['/bin/codex', 'login', 'status'])
+  })
+
+  test('codex not logged in names its login command', async () => {
+    const { spawn } = fakeSpawn([
+      { exitCode: 1, stdout: '', stderr: 'Not logged in' },
+    ])
+    const pf = await preflight({
+      analyzer: 'codex',
+      which: () => '/bin/codex',
+      spawn,
+    })
+    expect(pf.ok ? '' : pf.message).toContain('codex login')
+  })
+
+  test('neither analyzer available', async () => {
+    const pf = await preflight({ which: () => null })
+    expect(pf.ok ? '' : pf.message).toContain('Neither `claude` nor `codex`')
+  })
+})
+
+describe('CodexRunner', () => {
+  const answer =
+    (value: unknown, exitCode = 0) =>
+    (args: string[]): SpawnResult => {
+      const out = args[args.indexOf('--output-last-message') + 1]!
+      if (exitCode === 0) writeFileSync(out, JSON.stringify(value))
+      return { exitCode, stdout: '', stderr: exitCode ? 'boom\nlast line' : '' }
+    }
+
+  function fakeCodex(responses: ((args: string[]) => SpawnResult)[]) {
+    const calls: { args: string[]; stdin: string; cwd: string }[] = []
+    const spawn: SpawnFn = async (args, stdin, opts) => {
+      calls.push({ args, stdin, cwd: opts.cwd })
+      const next = responses.shift()
+      if (!next) throw new Error('no more fake responses')
+      return next(args)
+    }
+    return { spawn, calls }
+  }
+  const anyValue = (v: unknown) => ({ ok: true as const, value: v })
+
+  test('runs isolated, schema on disk, prompt and system prompt on stdin', async () => {
+    const { spawn, calls } = fakeCodex([answer({ items: [] })])
+    const runner = new CodexRunner({
+      binary: '/bin/codex',
+      model: null,
+      systemPrompt: 'SYSTEM',
+      spawn,
+    })
+    const schema = { type: 'object' }
+    let schemaSeen: unknown = null
+    const out = await runner.run(
+      `${FRISK_SENTINEL}\nlabel these`,
+      schema,
+      (v) => {
+        schemaSeen = JSON.parse(
+          readFileSync(
+            calls[0]!.args[calls[0]!.args.indexOf('--output-schema') + 1]!,
+            'utf8',
+          ),
+        )
+        return anyValue(v)
+      },
+    )
+    expect(out).toEqual({
+      ok: true,
+      value: { items: [] },
+      attempts: 1,
+      costUsd: 0,
+    })
+    expect(schemaSeen).toEqual(schema)
+    const { args, stdin, cwd } = calls[0]!
+    expect(args.slice(0, 2)).toEqual(['/bin/codex', 'exec'])
+    for (const flag of [
+      '--ephemeral',
+      '--ignore-user-config',
+      '--ignore-rules',
+      '--skip-git-repo-check',
+    ]) {
+      expect(args).toContain(flag)
+    }
+    expect(args[args.indexOf('--sandbox') + 1]).toBe('read-only')
+    expect(args[args.indexOf('--cd') + 1]).toBe(cwd)
+    for (const c of [
+      'web_search="disabled"',
+      'project_doc_max_bytes=0',
+      'features.shell_tool=false',
+      'approval_policy="never"',
+      'history.persistence="none"',
+    ]) {
+      expect(args).toContain(c)
+    }
+    expect(args).not.toContain('--model')
+    expect(args.at(-1)).toBe('-')
+    expect(readdirSync(cwd)).toEqual([])
+    expect(stdin.startsWith(`${FRISK_SENTINEL}\nSYSTEM\n\nlabel these`)).toBe(
+      true,
+    )
+    expect(runner.costUsd).toBeNull()
+    runner.dispose()
+  })
+
+  test('passes the model and retries once on failure', async () => {
+    const { spawn, calls } = fakeCodex([answer(null, 1), answer({ ok: 1 })])
+    const runner = new CodexRunner({
+      binary: 'codex',
+      model: 'gpt-5.4',
+      systemPrompt: 'S',
+      spawn,
+    })
+    const out = await runner.run('x', {}, anyValue)
+    expect(out.ok && out.attempts).toBe(2)
+    expect(calls[0]!.args[calls[0]!.args.indexOf('--model') + 1]).toBe(
+      'gpt-5.4',
+    )
+    expect(runner.calls).toBe(2)
+    runner.dispose()
+  })
+
+  test('reports the last stderr line when both attempts fail', async () => {
+    const { spawn } = fakeCodex([answer(null, 1), answer(null, 1)])
+    const runner = new CodexRunner({
+      binary: 'codex',
+      model: null,
+      systemPrompt: 'S',
+      spawn,
+    })
+    const out = await runner.run('x', {}, anyValue)
+    expect(out).toMatchObject({
+      ok: false,
+      reason: 'codex exited 1: last line',
+    })
+    expect(runner.failures).toBe(1)
+    runner.dispose()
+  })
+
+  test('accepts a fenced JSON answer and rejects prose', async () => {
+    const fenced = (args: string[]): SpawnResult => {
+      writeFileSync(
+        args[args.indexOf('--output-last-message') + 1]!,
+        '```json\n{"a":1}\n```',
+      )
+      return { exitCode: 0, stdout: '', stderr: '' }
+    }
+    const prose = (args: string[]): SpawnResult => {
+      writeFileSync(
+        args[args.indexOf('--output-last-message') + 1]!,
+        'Sure! Here it is.',
+      )
+      return { exitCode: 0, stdout: '', stderr: '' }
+    }
+    const { spawn } = fakeCodex([fenced, prose, prose])
+    const runner = new CodexRunner({
+      binary: 'codex',
+      model: null,
+      systemPrompt: 'S',
+      spawn,
+    })
+    expect(await runner.run('x', {}, anyValue)).toMatchObject({
+      ok: true,
+      value: { a: 1 },
+    })
+    expect(await runner.run('x', {}, anyValue)).toMatchObject({
+      ok: false,
+      reason: 'answer was not valid JSON',
+    })
+    runner.dispose()
   })
 })
 

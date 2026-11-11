@@ -1,28 +1,18 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import {
+  type AnalyzerId,
+  defaultSpawn,
+  type ModelRunner,
+  type RunOutcome,
+  type SpawnFn,
+  type SpawnResult,
+  type Validator,
+} from './runner.ts'
 
-export type SpawnResult = { exitCode: number; stdout: string; stderr: string }
-export type SpawnFn = (
-  args: string[],
-  stdin: string,
-  opts: { cwd: string },
-) => Promise<SpawnResult>
-
-export const defaultSpawn: SpawnFn = async (args, stdin, opts) => {
-  const proc = Bun.spawn(args, {
-    cwd: opts.cwd,
-    stdin: new Blob([stdin]),
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
-  return { exitCode, stdout, stderr }
-}
+export type { RunOutcome, SpawnFn, SpawnResult, Validator } from './runner.ts'
+export { defaultSpawn } from './runner.ts'
 
 /**
  * Every call is isolated:
@@ -64,15 +54,8 @@ export function claudeArgs(opts: {
   ]
 }
 
-export type RunOutcome<T> =
-  | { ok: true; value: T; attempts: number; costUsd: number }
-  | { ok: false; reason: string; attempts: number; costUsd: number }
-
-export type Validator<T> = (
-  value: unknown,
-) => { ok: true; value: T } | { ok: false; reason: string }
-
-export class ClaudeRunner {
+export class ClaudeRunner implements ModelRunner {
+  readonly analyzer: AnalyzerId = 'claude'
   private readonly cwd: string
   calls = 0
   failures = 0

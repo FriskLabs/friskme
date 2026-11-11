@@ -1,53 +1,30 @@
 import { basename } from 'node:path'
-import { FRISK_SENTINEL } from '../constants.ts'
-import type { SegmentSource } from '../sensitive/types.ts'
+import {
+  clip,
+  countLineType,
+  emptySession,
+  type FileCounters,
+  finishSession,
+  type ParseOutcome,
+  stringValues,
+  type TextVisitor,
+} from '../../parse/common.ts'
+import { readJsonl } from '../../parse/read-jsonl.ts'
+import { normalizeCommand, stepKey } from '../../parse/tool-step.ts'
 import {
   addTotals,
   emptyTotals,
   type Session,
   type TokenTotals,
-} from '../types.ts'
+} from '../../types.ts'
 import { classifyUserLine, commandIsIntent } from './classify-user-line.ts'
-import { readJsonl } from './read-jsonl.ts'
-import {
-  normalizeCommand,
-  stepKey,
-  toolDetail,
-  toolDisplayName,
-} from './tool-step.ts'
-
-/** One block of transcript text, for the sensitive-data scan. */
-export type TextVisit = {
-  source: SegmentSource
-  tool: string | null
-  ts: string
-  text: string
-}
-export type TextVisitor = (segment: TextVisit) => void
-
-/** Text blocks larger than this are cut before scanning (whole-file writes, huge logs). */
-const MAX_SEGMENT_CHARS = 512 * 1024
-
-function clip(text: string): string {
-  return text.length > MAX_SEGMENT_CHARS
-    ? text.slice(0, MAX_SEGMENT_CHARS)
-    : text
-}
+import { claudeToolKind, toolDetail, toolDisplayName } from './tools.ts'
 
 /** The text a tool was given: the command for Bash, every string value otherwise. */
 export function toolInputText(name: string, input: any): string {
   if (name === 'Bash' && typeof input?.command === 'string')
     return input.command
-  const parts: string[] = []
-  const walk = (v: unknown, depth: number) => {
-    if (depth > 4) return
-    if (typeof v === 'string') parts.push(v)
-    else if (Array.isArray(v)) for (const x of v) walk(x, depth + 1)
-    else if (v && typeof v === 'object')
-      for (const x of Object.values(v)) walk(x, depth + 1)
-  }
-  walk(input, 0)
-  return parts.join('\n')
+  return stringValues(input)
 }
 
 /** Text of a tool_result: a string, or its text blocks. Images are skipped. */
@@ -91,21 +68,6 @@ export const IGNORED_LINE_TYPES = new Set([
 
 const USED_LINE_TYPES = new Set(['user', 'assistant', 'system'])
 
-export type FileCounters = {
-  malformedLines: number
-  ignoredLineTypes: Record<string, number>
-  unknownLineTypes: Record<string, number>
-}
-
-export function emptyCounters(): FileCounters {
-  return { malformedLines: 0, ignoredLineTypes: {}, unknownLineTypes: {} }
-}
-
-export type ParseOutcome =
-  | { status: 'ok'; session: Session }
-  | { status: 'no-prompt' }
-  | { status: 'frisk-self' }
-
 function usageTotals(usage: any): TokenTotals {
   const n = (v: unknown) =>
     typeof v === 'number' && Number.isFinite(v) ? v : 0
@@ -126,11 +88,7 @@ function usageTotals(usage: any): TokenTotals {
 }
 
 function countType(counters: FileCounters, type: unknown): void {
-  const key = typeof type === 'string' ? type : '(missing)'
-  const bucket = IGNORED_LINE_TYPES.has(key)
-    ? counters.ignoredLineTypes
-    : counters.unknownLineTypes
-  bucket[key] = (bucket[key] ?? 0) + 1
+  countLineType(counters, type, IGNORED_LINE_TYPES)
 }
 
 /**
@@ -144,30 +102,7 @@ export async function parseSessionFile(
   onText?: TextVisitor,
 ): Promise<ParseOutcome> {
   const id = basename(path).replace(/\.jsonl$/, '')
-  const s: Session = {
-    id,
-    project: '',
-    projectLabel: '',
-    branch: null,
-    entrypoint: null,
-    sessionKind: null,
-    start: '',
-    end: '',
-    models: [],
-    prompts: [],
-    slashCommands: [],
-    steps: [],
-    bashRuns: [],
-    errors: 0,
-    interrupts: 0,
-    denials: 0,
-    compactions: 0,
-    endedAfterInterrupt: false,
-    interruptedTurnMessageIds: [],
-    tokens: {},
-    subagents: { count: 0, tokens: {} },
-    messageUsage: {},
-  }
+  const s: Session = emptySession(id, 'claude')
   const models = new Set<string>()
   const stepByToolUseId = new Map<string, number>()
   const bashByToolUseId = new Map<string, number>()
@@ -239,6 +174,7 @@ export async function parseSessionFile(
         stepByToolUseId.set(toolUseId, s.steps.length)
         s.steps.push({
           tool: toolDisplayName(b.name),
+          kind: claudeToolKind(b.name),
           detail: toolDetail(b.name, b.input),
           isError: false,
           messageId,
@@ -317,14 +253,7 @@ export async function parseSessionFile(
   }
 
   s.models = [...models].sort()
-  if (s.prompts.length === 0) return { status: 'no-prompt' }
-  if (s.prompts[0]!.text.startsWith(FRISK_SENTINEL))
-    return { status: 'frisk-self' }
-  if (!s.project) {
-    s.project = '(unknown)'
-    s.projectLabel = '(unknown)'
-  }
-  return { status: 'ok', session: s }
+  return finishSession(s)
 }
 
 function visitUserText(
@@ -411,19 +340,5 @@ function visitSubagentText(o: any, onText: TextVisitor): void {
       text = toolResultText(b.content)
     }
     if (text) onText({ source: 'subagent', tool, ts, text: clip(text) })
-  }
-}
-
-export function mergeSubagentUsage(
-  s: Session,
-  byModel: Record<string, TokenTotals>,
-): void {
-  s.subagents.count++
-  for (const [model, totals] of Object.entries(byModel)) {
-    s.subagents.tokens[model] ??= emptyTotals()
-    addTotals(s.subagents.tokens[model], totals)
-    s.tokens[model] ??= emptyTotals()
-    addTotals(s.tokens[model], totals)
-    if (!s.models.includes(model)) s.models = [...s.models, model].sort()
   }
 }

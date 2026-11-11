@@ -1,7 +1,16 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { claudeSource } from '../agents/claude/index.ts'
+import { claudeToolKind } from '../agents/claude/tools.ts'
+import { codexSource } from '../agents/codex/index.ts'
 import type { SpawnFn } from '../llm/claude-runner.ts'
 import { cosine, findWorkflow, toolMix } from '../llm/skill-pass.ts'
 import { scan } from '../scan.ts'
@@ -59,6 +68,7 @@ describe('formatting helpers', () => {
 
 const st = (tool: string, detail: string | null = null): ToolStep => ({
   tool,
+  kind: claudeToolKind(tool),
   detail,
   isError: false,
   messageId: 'm',
@@ -183,7 +193,7 @@ describe('scan end to end (synthetic transcripts, fake claude)', () => {
   }
 
   const base = () => ({
-    root: ROOT,
+    sources: [{ source: claudeSource, root: ROOT }],
     cacheDir: join(dir, 'cache'),
     sinceMs: 0,
     sinceLabel: 'all',
@@ -267,6 +277,90 @@ describe('scan end to end (synthetic transcripts, fake claude)', () => {
     expect(res.exitCode).toBe(0)
     expect(calls).toBe(0)
     expect(existsSync(join(dir, 'out'))).toBe(false)
+  })
+
+  test('labels Claude and Codex sessions together through codex exec', async () => {
+    const CODEX_ROOT = join(
+      import.meta.dir,
+      '..',
+      '__fixtures__',
+      'codex',
+      'sessions',
+    )
+    const calls: string[][] = []
+    // A fake `codex exec`: answers into the --output-last-message file.
+    const fakeCodex: SpawnFn = async (args, stdin, opts) => {
+      calls.push(args)
+      if (args[1] === 'login')
+        return { exitCode: 0, stdout: 'Logged in', stderr: '' }
+      const claudeStyle = await fakeClaude(args, stdin, opts)
+      const answer = JSON.parse(claudeStyle.stdout).structured_output
+      const outPath = args[args.indexOf('--output-last-message') + 1]!
+      writeFileSync(outPath, JSON.stringify(answer))
+      return { exitCode: 0, stdout: '', stderr: '' }
+    }
+    const lines: string[] = []
+    const res = await scan({
+      ...base(),
+      sources: [
+        { source: claudeSource, root: ROOT },
+        { source: codexSource, root: CODEX_ROOT },
+      ],
+      analyzer: 'codex',
+      model: undefined,
+      which: () => '/bin/codex',
+      spawn: fakeCodex,
+      noLlm: false,
+      log: (l) => lines.push(l),
+      out: () => undefined,
+    })
+    expect(res.exitCode).toBe(0)
+    expect(lines.join('\n')).toContain(
+      'Found 5 sessions (Claude Code 2, Codex 3)',
+    )
+    expect(lines.join('\n')).toContain(
+      'codex exec calls with the default model',
+    )
+    const report = JSON.parse(
+      readFileSync(join(dir, 'out', 'report.json'), 'utf8'),
+    )
+    expect(report.llm).toMatchObject({
+      analyzer: 'codex',
+      model: 'the default model',
+      costUsd: null,
+    })
+    expect(report.intents[0]).toMatchObject({ name: 'Fix tests', sessions: 5 })
+    expect(report.source.byAgent).toEqual({
+      claude: { files: 4, sessions: 2 },
+      codex: { files: 5, sessions: 3 },
+    })
+    expect(calls.every((a) => a[0] === '/bin/codex')).toBe(true)
+    expect(report.schemaVersion).toBe(3)
+    expect(
+      report.overview.agents.map((a: { agent: string; sessions: number }) => [
+        a.agent,
+        a.sessions,
+      ]),
+    ).toEqual([
+      ['claude', 2],
+      ['codex', 3],
+    ])
+    const codex = report.overview.agents.find(
+      (a: { agent: string }) => a.agent === 'codex',
+    )
+    expect(codex.cost).toBeGreaterThan(0)
+    expect(report.intents[0].agents).toEqual([
+      { name: 'Codex', count: 3 },
+      { name: 'Claude Code', count: 2 },
+    ])
+    expect(report.source.roots.map((r: { agent: string }) => r.agent)).toEqual([
+      'claude',
+      'codex',
+    ])
+    const html = readFileSync(join(dir, 'out', 'report.html'), 'utf8')
+    expect(html).toContain('<code>codex exec</code>')
+    expect(html).toContain('does not report cost')
+    expect(html).toContain('<title>Claude Code and Codex Report</title>')
   })
 
   test('not logged in exits 2 and suggests --no-llm', async () => {

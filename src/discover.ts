@@ -1,59 +1,10 @@
-import { readdir, stat } from 'node:fs/promises'
-import { homedir } from 'node:os'
-import { basename, join } from 'node:path'
+import type { SourceRoot } from './agents/types.ts'
 import {
   emptyCounters,
   mergeSubagentUsage,
-  parseSessionFile,
-  parseSubagentFile,
   type TextVisitor,
-} from './parse/build-session.ts'
+} from './parse/common.ts'
 import type { ParseStats, Session } from './types.ts'
-
-export function projectsRoot(env: NodeJS.ProcessEnv = process.env): string {
-  const base = env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude')
-  return join(base, 'projects')
-}
-
-export type SessionFile = {
-  path: string
-  mtimeMs: number
-  subagentPaths: string[]
-}
-
-async function listDir(path: string) {
-  try {
-    return await readdir(path, { withFileTypes: true })
-  } catch {
-    return []
-  }
-}
-
-/**
- * Lists `<root>/<encoded-cwd>/<session>.jsonl` and each session's
- * `<session>/subagents/*.jsonl`. Read-only: only readdir and stat.
- */
-export async function discoverSessionFiles(
-  root: string,
-): Promise<SessionFile[]> {
-  const out: SessionFile[] = []
-  for (const project of await listDir(root)) {
-    if (!project.isDirectory()) continue
-    const projectDir = join(root, project.name)
-    for (const entry of await listDir(projectDir)) {
-      if (!entry.isFile() || !entry.name.endsWith('.jsonl')) continue
-      const path = join(projectDir, entry.name)
-      const sessionDir = join(projectDir, entry.name.replace(/\.jsonl$/, ''))
-      const subagentPaths = (await listDir(join(sessionDir, 'subagents')))
-        .filter((e) => e.isFile() && e.name.endsWith('.jsonl'))
-        .map((e) => join(sessionDir, 'subagents', e.name))
-      const info = await stat(path).catch(() => null)
-      if (!info) continue
-      out.push({ path, mtimeMs: info.mtimeMs, subagentPaths })
-    }
-  }
-  return out
-}
 
 export type LoadOptions = {
   sinceMs: number
@@ -73,14 +24,14 @@ export type LoadResult = {
   filteredByProject: number
 }
 
+/** Reads every source, applies the window and filters, and merges the result. */
 export async function loadSessions(
-  root: string,
+  sources: SourceRoot[],
   opts: LoadOptions,
 ): Promise<LoadResult> {
-  const files = await discoverSessionFiles(root)
   const counters = emptyCounters()
   const stats: ParseStats = {
-    files: files.length,
+    files: 0,
     subagentFiles: 0,
     sessions: 0,
     skippedNoPrompt: 0,
@@ -89,47 +40,57 @@ export async function loadSessions(
     malformedLines: 0,
     ignoredLineTypes: counters.ignoredLineTypes,
     unknownLineTypes: counters.unknownLineTypes,
+    byAgent: {},
   }
   let sessions: Session[] = []
   let filteredByProject = 0
-  for (const f of files) {
-    // A file last written before the window cannot hold a session inside it.
-    if (f.mtimeMs < opts.sinceMs) {
-      stats.skippedOutsideWindow++
-      continue
+  for (const { source, root } of sources) {
+    const files = await source.discover(root, { sinceMs: opts.sinceMs })
+    const agentStats = { files: files.length, sessions: 0 }
+    stats.byAgent[source.id] = agentStats
+    stats.files += files.length
+    for (const f of files) {
+      // A file last written before the window cannot hold a session inside it.
+      if (f.mtimeMs < opts.sinceMs) {
+        stats.skippedOutsideWindow++
+        continue
+      }
+      const onText = opts.textVisitor?.(f.sessionId)
+      const outcome = await source.parse(f, counters, onText)
+      if (outcome.status === 'no-prompt') {
+        stats.skippedNoPrompt++
+        continue
+      }
+      if (outcome.status === 'frisk-self') {
+        stats.skippedFriskSelf++
+        continue
+      }
+      const s = outcome.session
+      if (Date.parse(s.end) < opts.sinceMs) {
+        stats.skippedOutsideWindow++
+        continue
+      }
+      if (
+        opts.project &&
+        !s.project.toLowerCase().includes(opts.project.toLowerCase())
+      ) {
+        filteredByProject++
+        continue
+      }
+      for (const sub of f.subagentPaths) {
+        stats.subagentFiles++
+        mergeSubagentUsage(s, await source.parseSubagent(sub, counters, onText))
+      }
+      sessions.push(s)
     }
-    const sessionId = basename(f.path).replace(/\.jsonl$/, '')
-    const onText = opts.textVisitor?.(sessionId)
-    const outcome = await parseSessionFile(f.path, counters, onText)
-    if (outcome.status === 'no-prompt') {
-      stats.skippedNoPrompt++
-      continue
-    }
-    if (outcome.status === 'frisk-self') {
-      stats.skippedFriskSelf++
-      continue
-    }
-    const s = outcome.session
-    if (Date.parse(s.end) < opts.sinceMs) {
-      stats.skippedOutsideWindow++
-      continue
-    }
-    if (
-      opts.project &&
-      !s.project.toLowerCase().includes(opts.project.toLowerCase())
-    ) {
-      filteredByProject++
-      continue
-    }
-    for (const sub of f.subagentPaths) {
-      stats.subagentFiles++
-      mergeSubagentUsage(s, await parseSubagentFile(sub, counters, onText))
-    }
-    sessions.push(s)
   }
   sessions.sort((a, b) => (a.start < b.start ? 1 : -1))
   if (opts.maxSessions !== undefined && sessions.length > opts.maxSessions) {
     sessions = sessions.slice(0, opts.maxSessions)
+  }
+  for (const s of sessions) {
+    const a = stats.byAgent[s.agent]
+    if (a) a.sessions++
   }
   stats.malformedLines = counters.malformedLines
   stats.sessions = sessions.length

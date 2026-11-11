@@ -1,10 +1,13 @@
 import { describe, expect, test } from 'bun:test'
 import { join } from 'node:path'
-import { loadSessions } from '../discover.ts'
-import type { Session } from '../types.ts'
-import { emptyCounters, parseSessionFile } from './build-session.ts'
+import { loadSessions } from '../../discover.ts'
+import { emptyCounters } from '../../parse/common.ts'
+import type { Session } from '../../types.ts'
+import { parseSessionFile } from './build-session.ts'
+import { claudeSource } from './index.ts'
 
-const ROOT = join(import.meta.dir, '..', '__fixtures__', 'projects')
+const ROOT = join(import.meta.dir, '..', '..', '__fixtures__', 'projects')
+const at = (root: string) => [{ source: claudeSource, root }]
 const DEMO = join(
   ROOT,
   '-tmp-demo-app',
@@ -148,7 +151,7 @@ describe('parseSessionFile (older transcript shape)', () => {
 
 describe('loadSessions', () => {
   test('skips frisk-made and prompt-less sessions, and rolls up subagent usage', async () => {
-    const { sessions, stats } = await loadSessions(ROOT, { sinceMs: 0 })
+    const { sessions, stats } = await loadSessions(at(ROOT), { sinceMs: 0 })
     expect(stats.files).toBe(4)
     expect(stats.skippedFriskSelf).toBe(1)
     expect(stats.skippedNoPrompt).toBe(1)
@@ -166,18 +169,18 @@ describe('loadSessions', () => {
   })
 
   test('filters by project substring and caps by most recent', async () => {
-    const byProject = await loadSessions(ROOT, {
+    const byProject = await loadSessions(at(ROOT), {
       sinceMs: 0,
       project: 'legacy',
     })
     expect(byProject.sessions.map((s) => s.projectLabel)).toEqual(['legacy'])
     expect(byProject.filteredByProject).toBe(1)
-    const capped = await loadSessions(ROOT, { sinceMs: 0, maxSessions: 1 })
+    const capped = await loadSessions(at(ROOT), { sinceMs: 0, maxSessions: 1 })
     expect(capped.sessions.map((s) => s.projectLabel)).toEqual(['legacy'])
   })
 
   test('drops sessions that ended before the window', async () => {
-    const { sessions, stats } = await loadSessions(ROOT, {
+    const { sessions, stats } = await loadSessions(at(ROOT), {
       sinceMs: Date.parse('2026-11-04T00:00:00Z'),
     })
     expect(sessions.map((s) => s.projectLabel)).toEqual(['legacy'])
@@ -186,7 +189,7 @@ describe('loadSessions', () => {
 
   test('returns nothing for a missing root', async () => {
     const { sessions, stats } = await loadSessions(
-      join(ROOT, 'does-not-exist'),
+      at(join(ROOT, 'does-not-exist')),
       { sinceMs: 0 },
     )
     expect(sessions).toEqual([])

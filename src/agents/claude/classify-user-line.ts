@@ -1,4 +1,4 @@
-import type { PromptSource } from '../types.ts'
+import type { PromptSource } from '../../types.ts'
 
 /**
  * What a `type: "user"` transcript line is. Only `human` and `command` lines

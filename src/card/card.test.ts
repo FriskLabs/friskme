@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { claudeToolKind } from '../agents/claude/tools.ts'
 import { fakeSecrets } from '../sensitive/test-secrets.ts'
 import type { Session, ToolStep } from '../types.ts'
 import { buildCard, foldSequence, truncate } from './build-card.ts'
@@ -91,6 +92,7 @@ const step = (
   isError = false,
 ): ToolStep => ({
   tool,
+  kind: claudeToolKind(tool),
   detail,
   isError,
   messageId: 'm',

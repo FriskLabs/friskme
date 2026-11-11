@@ -19,13 +19,11 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { gzipSync } from 'node:zlib'
+import { parseSessionFile } from '../agents/claude/build-session.ts'
+import { claudeSource } from '../agents/claude/index.ts'
 import { Cache } from '../cache.ts'
 import { loadSessions } from '../discover.ts'
-import {
-  emptyCounters,
-  parseSessionFile,
-  type TextVisit,
-} from '../parse/build-session.ts'
+import { emptyCounters, type TextVisit } from '../parse/common.ts'
 import { SensitiveCollector } from './collect.ts'
 import { detectInText } from './detect.ts'
 import { fingerprint, loadSalt, maskValue } from './mask.ts'
@@ -377,10 +375,13 @@ describe('segment extraction and collection', () => {
       rules: true,
       modelScope: null,
     })
-    const { sessions } = await loadSessions(dir, {
-      sinceMs: 0,
-      textVisitor: (id) => collector.visitor(id),
-    })
+    const { sessions } = await loadSessions(
+      [{ source: claudeSource, root: dir }],
+      {
+        sinceMs: 0,
+        textVisitor: (id) => collector.visitor(id),
+      },
+    )
     const findings = collector.findings(
       new Map(sessions.map((s) => [s.id, s.projectLabel])),
     )
@@ -682,7 +683,7 @@ describe('scan end to end with secrets in transcripts', () => {
     writeSecretTranscript(root)
     const out = join(dir, 'out')
     const res = await scan({
-      root,
+      sources: [{ source: claudeSource, root }],
       cacheDir: join(dir, 'cache'),
       sinceMs: 0,
       sinceLabel: 'all',
@@ -721,7 +722,7 @@ describe('scan end to end with secrets in transcripts', () => {
     const root = join(dir, 'projects')
     writeSecretTranscript(root)
     const res = await scan({
-      root,
+      sources: [{ source: claudeSource, root }],
       cacheDir: join(dir, 'cache'),
       sinceMs: 0,
       sinceLabel: 'all',
@@ -891,7 +892,7 @@ describe('one line per value', () => {
     )
     const out = join(dir, 'out')
     const res = await scan({
-      root,
+      sources: [{ source: claudeSource, root }],
       cacheDir: join(dir, 'cache'),
       sinceMs: 0,
       sinceLabel: 'all',
@@ -924,7 +925,7 @@ describe('--reveal', () => {
     writeSecretTranscript(root)
     const out = join(dir, reveal ? 'out-reveal' : 'out-masked')
     const res = await scan({
-      root,
+      sources: [{ source: claudeSource, root }],
       cacheDir: join(dir, 'cache'),
       sinceMs: 0,
       sinceLabel: 'all',

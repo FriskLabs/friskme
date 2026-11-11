@@ -71,7 +71,7 @@ export async function modelsCommand(
       say(
         bad.length === 0
           ? '  status    installed, all hashes verified'
-          : `  status    corrupt: ${bad.join(', ')} (run frisk models remove, then download)`,
+          : `  status    corrupt: ${bad.join(', ')} (run friskme models remove, then download)`,
       )
     } else {
       say(`  status    not installed (${mb(plan.bytes)} to download)`)
@@ -112,6 +112,6 @@ export async function modelsCommand(
     say('Installed and verified.')
     return 0
   }
-  process.stderr.write('Usage: frisk models list|download|remove\n')
+  process.stderr.write('Usage: friskme models list|download|remove\n')
   return 2
 }

@@ -26,7 +26,7 @@ export function renderTerminal(
   lines.push(
     '',
     bold(
-      `frisk · ${o.sessions} sessions across ${o.projects.length} projects · ${formatDate(r.window.from)} → ${formatDate(r.window.to)}`,
+      `friskme · ${o.sessions} sessions across ${o.projects.length} projects · ${formatDate(r.window.from)} → ${formatDate(r.window.to)}`,
       c,
     ),
   )

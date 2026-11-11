@@ -84,7 +84,6 @@ Release tooling sits outside `src/`:
 
 - Track work in GitHub issues on `FriskLabs/frisk-cli`. Reference the issue in commits (`Refs #N`) and close it from the PR (`Closes #N`).
 - To release, follow README "Releasing": keep `package.json` `version` and `FRISK_VERSION` equal, then push a `v<version>` tag. Never publish to npm by hand.
-- Don't add AI attribution to commits or PRs: no `Co-Authored-By` trailer for an assistant, and no "Generated with …" line.
 
 ## Docs
 

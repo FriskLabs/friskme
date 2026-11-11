@@ -11,19 +11,30 @@ No account and no sign-up. frisk makes no network calls of its own, except one o
 
 ## Install
 
-Download the binary for your platform and put it on your `PATH`. You don't need Bun.
+Run it with npx. You need Node 18 or newer, and you don't need Bun:
+
+```sh
+npx friskme
+```
+
+To install the `frisk` command, run `npm i -g friskme`.
+
+The npm package installs a prebuilt binary for your platform: macOS (Apple silicon or Intel) or Linux (x64 or arm64, with glibc). npm downloads it at install time; frisk itself downloads nothing. Alpine and other musl-based Linux distributions aren't supported.
+
+You can also download a binary from [GitHub Releases](https://github.com/FriskLabs/frisk-cli/releases) and put it on your `PATH`. Each release includes a `SHA256SUMS` file.
 
 | Platform             | File                 |
 | -------------------- | -------------------- |
 | macOS, Apple silicon | `frisk-darwin-arm64` |
 | macOS, Intel         | `frisk-darwin-x64`   |
 | Linux x64            | `frisk-linux-x64`    |
+| Linux arm64          | `frisk-linux-arm64`  |
 
 ```sh
 chmod +x frisk-darwin-arm64 && mv frisk-darwin-arm64 /usr/local/bin/frisk
 ```
 
-To build from this repo, run `bun run build:release`. That writes all three binaries to `dist/`; `build` compiles only your own platform.
+To build from this repo, run `bun run build:release`. That writes all four binaries to `dist/`; `build` compiles only your own platform.
 
 Naming intents and drafting skills needs one model CLI, logged in: `claude` (Claude Code) or `codex`. frisk uses whichever you have, Claude first; `--analyzer` picks one. Without either, run `frisk --no-llm` to get the overview and waste sections only.
 
@@ -216,5 +227,14 @@ bun run dev -- --no-llm
 frisk is self-contained: it uses no FriskAI workspace packages, and `src/standalone.test.ts` fails if one is imported.
 
 To add an agent, see "Adding an agent" in `AGENTS.md`.
+
+### Releasing
+
+frisk is published to npm as `friskme`, which is a small Node launcher, plus one `friskme-<os>-<arch>` package per platform that holds the binary. npm installs only the platform package that matches the machine. To release:
+
+1. Set the same version in `package.json` and `FRISK_VERSION` (`src/constants.ts`), then commit.
+2. Push a tag: `git tag v0.1.0 && git push origin v0.1.0`.
+
+`.github/workflows/release.yml` runs the checks, builds every binary, lays out the packages with `scripts/pack-npm.ts`, smoke-tests the install, publishes to npm with provenance, and creates a GitHub Release that has the binaries and `SHA256SUMS`. It needs an npm automation token in the `NPM_TOKEN` repository secret.
 
 `src/lib/` holds three modules copied from FriskAI's control-plane monorepo on 2026-11-11: `sequence-fold.ts` (the loop fold), `command-family.ts` (Bash command families) and `mcp-tool-name.ts`. They no longer track the originals.

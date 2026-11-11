@@ -1,18 +1,21 @@
 {
   "name": "frisk-cli",
   "version": "0.1.0",
+  "description": "A local report on what your coding-agent sessions were actually for.",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "bin": {
     "frisk": "./src/cli.ts"
   },
   "scripts": {
     "dev": "bun src/cli.ts",
-    "test": "bun test --parallel src",
+    "test": "bun test --parallel src scripts",
     "typecheck": "tsc --noEmit",
     "biome:check": "biome check --fix",
     "build": "bun scripts/compile.ts",
-    "build:release": "bun scripts/compile.ts --all"
+    "build:release": "bun scripts/compile.ts --all",
+    "pack:npm": "bun scripts/pack-npm.ts"
   },
   "dependencies": {
     "@huggingface/transformers": "3.8.1",

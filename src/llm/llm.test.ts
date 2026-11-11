@@ -205,6 +205,18 @@ describe('ClaudeRunner', () => {
 })
 
 describe('preflight', () => {
+  test('a Windows .cmd shim is refused before it is run', async () => {
+    const { spawn, calls } = fakeSpawn([])
+    const pf = await preflight({
+      analyzer: 'claude',
+      which: () => 'C:\\npm\\claude.cmd',
+      spawn,
+    })
+    expect(pf.ok).toBe(false)
+    expect(pf.ok ? '' : pf.message).toContain('.exe')
+    expect(calls).toHaveLength(0)
+  })
+
   test('missing claude binary', async () => {
     const pf = await preflight({ analyzer: 'claude', which: () => null })
     expect(pf.ok).toBe(false)

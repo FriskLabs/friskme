@@ -1,3 +1,4 @@
+import { which as findOnPath } from '../which.ts'
 import {
   ANALYZERS,
   type AnalyzerId,
@@ -28,7 +29,7 @@ export async function checkAnalyzer(
   analyzer: AnalyzerId,
   deps: Deps = {},
 ): Promise<Preflight> {
-  const which = deps.which ?? ((b: string) => Bun.which(b))
+  const which = deps.which ?? ((b: string) => findOnPath(b))
   const spawn = deps.spawn ?? defaultSpawn
   const info = ANALYZERS[analyzer]
   const binary = which(info.binary)
@@ -36,6 +37,14 @@ export async function checkAnalyzer(
     return {
       ok: false,
       message: `The \`${info.binary}\` CLI was not found on your PATH. frisk uses it to label sessions.\n${NO_LLM_HINT}`,
+    }
+  }
+  // Windows runs .cmd/.bat shims only through cmd.exe, which would mangle the
+  // JSON schema and multi-line prompts frisk passes as arguments.
+  if (/\.(cmd|bat)$/i.test(binary)) {
+    return {
+      ok: false,
+      message: `Found ${binary}, a script shim; frisk needs the native \`${info.binary}\` executable (.exe) on Windows.\n${NO_LLM_HINT}`,
     }
   }
   const statusArgs =

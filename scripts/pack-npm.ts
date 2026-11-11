@@ -1,8 +1,8 @@
 /**
- * Lays out the npm packages from the compiled binaries in dist/.
+ * Lays out the npm package from the bundle in dist/.
  *
- *   bun run build:release
- *   bun scripts/pack-npm.ts 0.1.0   # writes dist/npm/<package>/
+ *   bun run build:npm
+ *   bun scripts/pack-npm.ts 0.1.0   # writes dist/npm/friskme/
  *
  * The version must match package.json and FRISK_VERSION, so `frisk --version`
  * always agrees with the published package.
@@ -10,14 +10,8 @@
 import { chmodSync, copyFileSync, existsSync, mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { FRISK_VERSION } from '../src/constants.ts'
-import {
-  launcherManifest,
-  NPM_NAME,
-  platformManifest,
-  platformPackageName,
-  type RootInfo,
-} from './npm-manifest.ts'
-import { TARGETS } from './targets.ts'
+import { BUNDLE } from './bundle-path.ts'
+import { NPM_NAME, packageManifest, type RootInfo } from './npm-manifest.ts'
 
 const root = join(import.meta.dir, '..')
 const pkg = (await Bun.file(join(root, 'package.json')).json()) as {
@@ -69,21 +63,10 @@ async function writePackage(
   console.log(`wrote ${dir}`)
 }
 
-for (const t of TARGETS) {
-  const binary = join(root, 'dist', `frisk-${t.id}`)
-  if (!existsSync(binary)) die(`${binary} is missing; run build:release first.`)
-  await writePackage(
-    join(out, platformPackageName(t)),
-    platformManifest(info, t),
-    [
-      [binary, 'bin/frisk', 0o755],
-      [join(root, 'LICENSE'), 'LICENSE'],
-    ],
-  )
-}
-
-await writePackage(join(out, NPM_NAME), launcherManifest(info, TARGETS), [
-  [join(root, 'npm', 'launcher', 'frisk.js'), 'bin/frisk.js', 0o755],
+const bundle = join(root, BUNDLE)
+if (!existsSync(bundle)) die(`${bundle} is missing; run build:npm first.`)
+await writePackage(join(out, NPM_NAME), packageManifest(info), [
+  [bundle, 'bin/frisk.js', 0o755],
   [join(root, 'README.md'), 'README.md'],
   [join(root, 'LICENSE'), 'LICENSE'],
 ])

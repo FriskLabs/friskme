@@ -30,6 +30,19 @@ describe('standalone', () => {
     expect(offenders).toEqual([])
   })
 
+  // The npm package is a Node bundle: runtime code uses Node APIs only.
+  // Tests and build scripts may use Bun.
+  test('no Bun-only APIs in runtime code', () => {
+    const offenders = files
+      .filter((f) => f.startsWith('src') && !f.endsWith('.test.ts'))
+      .filter((f) =>
+        /\bBun\.|from ['"]bun['"]|import\.meta\.(main|dir|file|path)\b/.test(
+          readFileSync(join(APP, f), 'utf8'),
+        ),
+      )
+    expect(offenders).toEqual([])
+  })
+
   test('package.json declares no workspace dependencies', () => {
     const pkg = JSON.parse(readFileSync(join(APP, 'package.json'), 'utf8'))
     const deps = {

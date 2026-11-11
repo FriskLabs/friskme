@@ -6,9 +6,10 @@
  * (MIT license, both). Quantized (q8). Labels PER, LOC, ORG, MISC; frisk
  * uses PER and LOC.
  *
- * Runtime: the ONNX Runtime library from the onnxruntime-node 1.21.0 npm
- * package (MIT, Microsoft), the exact build the embedded binding is linked
- * against. Only the current platform's library is extracted from the tarball.
+ * Runtime: the ONNX Runtime library and its Node binding from the
+ * onnxruntime-node 1.21.0 npm package (MIT, Microsoft). Only the current
+ * platform's two files are extracted from the tarball. The binding sits next
+ * to the library, which it finds through its `@loader_path`/`$ORIGIN` rpath.
  */
 export const MODEL_NAME = 'bert-base-NER'
 export const MODEL_REPO = 'Xenova/bert-base-NER'
@@ -86,6 +87,34 @@ export const RUNTIME_LIBS: Record<Platform, RuntimeLib> = {
     fileName: 'libonnxruntime.so.1',
     size: 21914784,
     sha256: '05bfddeefc536a44478c20226218dae8853995518bb2a994b4fa15a996f5f412',
+  },
+}
+
+/**
+ * The Node binding for the runtime, from the same tarball. frisk is bundled,
+ * so `onnxruntime-node`'s own `require` of the `.node` file is replaced at
+ * build time (scripts/ort-binding-stub.ts) with a load from this env var.
+ */
+export const ORT_BINDING_ENV = 'FRISK_ORT_BINDING'
+
+export const RUNTIME_BINDINGS: Record<Platform, RuntimeLib> = {
+  'darwin-arm64': {
+    tarPath: 'package/bin/napi-v3/darwin/arm64/onnxruntime_binding.node',
+    fileName: 'onnxruntime_binding.node',
+    size: 233685,
+    sha256: '8ad39fe71b4e4683ae5ae7b5edb8f4d2fb47f58dc139c68a2a14d3977281b9a5',
+  },
+  'darwin-x64': {
+    tarPath: 'package/bin/napi-v3/darwin/x64/onnxruntime_binding.node',
+    fileName: 'onnxruntime_binding.node',
+    size: 233520,
+    sha256: 'a87a5f6b21777c733ce3b8cfb45e806d2e72b7331fe80e39fc22cec746dab1af',
+  },
+  'linux-x64': {
+    tarPath: 'package/bin/napi-v3/linux/x64/onnxruntime_binding.node',
+    fileName: 'onnxruntime_binding.node',
+    size: 347368,
+    sha256: '02f47073236ef20db4c27e1923cd601d21d8ac730a80efb656a7241643ad1e07',
   },
 }
 

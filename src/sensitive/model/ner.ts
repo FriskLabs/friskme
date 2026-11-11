@@ -1,11 +1,12 @@
+import { spawn } from 'node:child_process'
+import { dirname, join } from 'node:path'
 import { createInterface } from 'node:readline'
-import { Readable } from 'node:stream'
-import type { ReadableStream as WebReadableStream } from 'node:stream/web'
+import { fileURLToPath } from 'node:url'
 import { type Cache, sha256 } from '../../cache.ts'
 import { fingerprint, maskValue } from '../mask.ts'
 import type { Confidence } from '../types.ts'
 import type { ModelPaths } from './download.ts'
-import { MODEL_NAME, MODEL_REVISION } from './manifest.ts'
+import { MODEL_NAME, MODEL_REVISION, ORT_BINDING_ENV } from './manifest.ts'
 
 export const MIN_SCORE = 0.85
 /** Bump when entity post-processing changes, so cached fingerprints are recomputed. */
@@ -150,28 +151,42 @@ export interface NerEngine {
   close(): void
 }
 
-/** Spawns `frisk __ner-worker`, pointing the dynamic loader at the downloaded runtime. */
+/**
+ * The command that re-runs frisk itself: the compiled binary is the CLI; the
+ * npm bundle is one file, so this module's URL is the script to run; from
+ * source, run `bin.ts`, not whatever script started the process (a test, say).
+ */
+export function selfCommand(
+  args: string[],
+  moduleUrl: string = import.meta.url,
+  execPath: string = process.execPath,
+): string[] {
+  if (moduleUrl.includes('$bunfs')) return [execPath, ...args]
+  const here = fileURLToPath(moduleUrl)
+  const entry = here.endsWith('.ts')
+    ? join(dirname(here), '..', '..', 'bin.ts')
+    : here
+  return [execPath, entry, ...args]
+}
+
+/** Spawns `frisk __ner-worker`, pointing it at the downloaded ONNX Runtime. */
 export async function startWorker(paths: ModelPaths): Promise<NerEngine> {
-  // Compiled: the binary is the CLI. From source: run cli.ts itself, not
-  // Bun.main, which is whatever script started the process (a test, say).
-  const compiled =
-    import.meta.url.includes('$bunfs') || Bun.main.startsWith('/$bunfs/')
-  const cliEntry = new URL('../../cli.ts', import.meta.url).pathname
-  const cmd = compiled
-    ? [process.execPath, '__ner-worker', paths.modelRoot]
-    : [process.execPath, cliEntry, '__ner-worker', paths.modelRoot]
-  const proc = Bun.spawn(cmd, {
-    stdin: 'pipe',
-    stdout: 'pipe',
-    stderr: 'pipe',
+  const [cmd, ...args] = selfCommand(['__ner-worker', paths.modelRoot])
+  const proc = spawn(cmd!, args, {
+    stdio: 'pipe',
+    windowsHide: true,
     env: {
       ...process.env,
+      [ORT_BINDING_ENV]: paths.runtimeBinding,
       DYLD_FALLBACK_LIBRARY_PATH: paths.runtimeDir,
       LD_LIBRARY_PATH: paths.runtimeDir,
     },
   })
-  const lines = createInterface({
-    input: Readable.fromWeb(proc.stdout as unknown as WebReadableStream),
+  const lines = createInterface({ input: proc.stdout })
+  const stderr: Buffer[] = []
+  proc.stderr.on('data', (c: Buffer) => stderr.push(c))
+  proc.stdin.on('error', () => {
+    // The worker died (EPIPE); the 'close' handler reports why.
   })
   const pending = new Map<number, (t: NerToken[]) => void>()
   let ready: () => void
@@ -200,8 +215,9 @@ export async function startWorker(paths: ModelPaths): Promise<NerEngine> {
       pending.delete(msg.id)
     }
   })
-  proc.exited.then(async (code) => {
-    const err = await new Response(proc.stderr).text().catch(() => '')
+  proc.on('error', (e) => failed(e))
+  proc.on('close', (code) => {
+    const err = Buffer.concat(stderr).toString('utf8')
     failed(
       new Error(
         `NER worker exited (${code}): ${err.trim().split('\n').slice(-3).join(' ')}`,
@@ -216,7 +232,6 @@ export async function startWorker(paths: ModelPaths): Promise<NerEngine> {
       return new Promise((resolve) => {
         pending.set(id, resolve)
         proc.stdin.write(`${JSON.stringify({ id, text })}\n`)
-        proc.stdin.flush()
       })
     },
     close() {

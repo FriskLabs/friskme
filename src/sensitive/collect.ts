@@ -1,4 +1,4 @@
-import type { TextVisit } from '../parse/build-session.ts'
+import type { TextVisit } from '../parse/common.ts'
 import { detectInText } from './detect.ts'
 import { fingerprint, maskValue } from './mask.ts'
 import type {

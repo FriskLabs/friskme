@@ -1,4 +1,6 @@
+import { agentName } from '../agents/registry.ts'
 import { FRISKAI_URL } from '../constants.ts'
+import { ANALYZERS } from '../llm/runner.ts'
 import type { SensitiveValue } from '../sensitive/summary.ts'
 import type { SegmentSource } from '../sensitive/types.ts'
 import type { WasteKind } from '../waste/detectors.ts'
@@ -209,6 +211,9 @@ function intentRow(it: IntentReport, r: Report): string {
   <div class="body">
     <p>${esc(it.description)}</p>
     ${kv([
+      ...(r.overview.agents.length > 1
+        ? ([['agents', counts(it.agents)]] as [string, string][])
+        : []),
       ['tools', counts(it.topTools)],
       ['projects', counts(it.projects)],
       ['labels', counts(it.labels)],
@@ -270,12 +275,13 @@ export function renderHtml(r: Report): string {
   const redactions = Object.entries(r.llm.redactions)
   const wasteKinds = Object.keys(WASTE_LABELS) as WasteKind[]
 
+  const multiAgent = o.agents.length > 1
   const wasteRows = r.waste.top
     .slice(0, 25)
     .map((w) => [
       `<span class="warn nowrap">${esc(WASTE_ITEM_LABELS[w.kind])}</span>`,
       `<code>${esc(w.label.replace(/`/g, ''))}</code>${w.editRunError ? ' <span class="warn">edit → run → error</span>' : ''}`,
-      `<span class="nowrap">${esc(w.project)}</span>`,
+      `<span class="nowrap">${esc(w.project)}${multiAgent ? ` <span class="dim">${esc(agentName(w.agent))}</span>` : ''}</span>`,
       `<span class="nowrap">${esc(formatDate(w.start))}</span>`,
       esc(formatTokens(w.tokens)),
       w.cost === null
@@ -289,7 +295,7 @@ export function renderHtml(r: Report): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light">
-<title>Claude Code Report</title>
+<title>${esc(agentsTitle(r))} Report</title>
 <style>
 :root{
   --paper:#fdfdfc;--ink:#1f2328;--dim:#6e7781;--rule:#d8dee4;--wash:#f3f5f7;
@@ -395,7 +401,7 @@ footer{margin-top:56px;padding-top:16px;border-top:1px solid var(--rule);color:v
 <header>
   <p class="cmd">$ <b>${esc(command)}</b></p>
   ${r.sensitive.revealed ? '<p class="banner" role="alert">This report contains unmasked secrets and personal data (--reveal). Keep it on this machine; do not share or commit it.</p>' : ''}
-  <h1>What your Claude Code sessions were for</h1>
+  <h1>What your ${esc(agentsTitle(r))} sessions were for</h1>
   ${comment(`${o.sessions} sessions in ${o.projects.length} projects, ${period}. Generated on this machine by frisk ${r.friskVersion}.`)}
   <nav aria-label="Sections"><a href="#overview">overview</a><a href="#intents">intents</a><a href="#workflows">workflows</a><a href="#waste">waste</a><a href="#sensitive">sensitive</a><a href="#method">method</a></nav>
 </header>
@@ -406,6 +412,19 @@ ${kv([
     'sessions',
     `<span class="big">${o.sessions}</span> <span class="dim">with a prompt you typed</span>`,
   ],
+  ...(multiAgent
+    ? ([
+        [
+          'agents',
+          o.agents
+            .map(
+              (a) =>
+                `<span class="ct">${esc(a.name)}<sup>${a.sessions} · ${formatShare(a.share)} · ${esc(formatUsd(a.cost))}</sup></span>`,
+            )
+            .join(' '),
+        ],
+      ] as [string, string][])
+    : []),
   ['prompts', `${o.prompts}`],
   [
     'tool calls',
@@ -451,7 +470,7 @@ ${
     ? `${comment(`Labeled by ${r.llm.model} from each session's prompts and tool sequence, then merged into intents. Counts and shares computed locally. Bars are share of all ${o.sessions} sessions. ${r.llm.unlabeledSessions} sessions unlabeled.`)}
 <div class="cols" aria-hidden="true"><span class="num">share</span><span>of all</span><span>intent</span><span class="num">n</span><span>weekly</span></div>
 ${r.intents.map((it) => intentRow(it, r)).join('')}`
-    : `<p class="dim">${r.llm.enabled ? 'No intents: labeling produced no results.' : 'Skipped. Run without --no-llm to name intents with claude -p.'}</p>`
+    : `<p class="dim">${r.llm.enabled ? 'No intents: labeling produced no results.' : 'Skipped. Run without --no-llm to name intents with claude -p or codex exec.'}</p>`
 }
 
 <h2 id="workflows">Repeated workflows</h2>
@@ -506,12 +525,12 @@ ${sensitiveSection(r)}
 
 <h2 id="method">Method and caveats</h2>
 <ul class="method">
-<li><b>read</b> ${skipped.files} session files and ${skipped.subagentFiles} subagent files under <code>${esc(skipped.root)}</code>, read-only. Nothing there was changed.</li>
+<li><b>read</b> ${skipped.files} session files and ${skipped.subagentFiles} subagent files under ${skipped.roots.map((x) => `<code>${esc(x.path)}</code> (${esc(agentName(x.agent))}${skipped.byAgent[x.agent] ? `, ${skipped.byAgent[x.agent]!.files} files` : ''})`).join(', ') || 'no agent folders'}, read-only. Nothing there was changed.</li>
 <li><b>kept</b> ${o.sessions} sessions active since ${esc(r.window.since)}. Skipped ${skipped.skippedOutsideWindow} outside the window, ${skipped.skippedNoPrompt} with no typed prompt, ${skipped.skippedFriskSelf} created by frisk${skipped.filteredByProject ? `, ${skipped.filteredByProject} outside --project` : ''}.</li>
 <li><b>lines</b> ${skipped.malformedLines} malformed lines skipped. Ignored by design: ${ignored.map(([k, v]) => `${esc(k)} (${v})`).join(', ') || 'none'}.${unknown.length ? ` Unknown line types, ignored: ${unknown.map(([k, v]) => `${esc(k)} (${v})`).join(', ')}.` : ''}</li>
 <li><b>sent</b> ${
     r.llm.enabled
-      ? `${r.llm.calls} <code>claude -p</code> ${r.llm.calls === 1 ? 'call' : 'calls'} to ${esc(r.llm.model)} under your own Claude login, ${r.llm.failedCalls} failed. Labeling sent each session's first prompt (≤600 chars), up to 5 follow-ups (≤200 chars each), the project folder name and folded tool names. Grouping sent only labels and counts. Skill drafting sent 3–5 of the same cards. Secrets were redacted first${redactions.length ? ` (${redactions.map(([k, v]) => `${esc(k)}: ${v}`).join(', ')})` : ', none found'}. Calls ran with no tools, no session persistence and safe mode. ${r.llm.labelsFromCache} labels came from the local cache. frisk's own calls cost ${formatUsd(r.llm.costUsd)} at list price.`
+      ? `${r.llm.calls} <code>${esc(analyzerInfo(r).callName)}</code> ${r.llm.calls === 1 ? 'call' : 'calls'} to ${esc(r.llm.model)} under your own ${esc(analyzerInfo(r).loginName)} login, ${r.llm.failedCalls} failed. Labeling sent each session's first prompt (≤600 chars), up to 5 follow-ups (≤200 chars each), the project folder name and folded tool names. Grouping sent only labels and counts. Skill drafting sent 3–5 of the same cards. Secrets were redacted first${redactions.length ? ` (${redactions.map(([k, v]) => `${esc(k)}: ${v}`).join(', ')})` : ', none found'}. ${r.llm.analyzer === 'codex' ? 'Calls ran ephemeral, without your Codex config, MCP servers, AGENTS.md, web search or the shell tool, in a read-only sandbox and an empty folder.' : 'Calls ran with no tools, no session persistence and safe mode.'} ${r.llm.labelsFromCache} labels came from the local cache. ${r.llm.costUsd === null ? `${esc(analyzerInfo(r).callName)} does not report cost, so frisk's own calls are not priced.` : `frisk's own calls cost ${formatUsd(r.llm.costUsd)} at list price.`}`
       : 'nothing (--no-llm).'
   }</li>
 ${r.llm.groupingFellBack ? '<li><b>fallback</b> grouping failed twice, so intents are work categories.</li>' : ''}
@@ -527,4 +546,15 @@ ${r.sensitive.model ? `<li><b>pii model</b> ${esc(r.sensitive.model.name)} at re
 </body>
 </html>
 `
+}
+
+function analyzerInfo(r: Report) {
+  return ANALYZERS[r.llm.analyzer ?? 'claude']
+}
+
+/** `Claude Code`, `Codex`, or `Claude Code and Codex`: whichever agents the report covers. */
+function agentsTitle(r: Report): string {
+  const names = r.overview.agents.map((a) => a.name)
+  if (names.length === 0) return 'coding-agent'
+  return names.join(' and ')
 }

@@ -3,6 +3,7 @@ import { scrubSecrets } from '../card/scrub-secrets.ts'
 import { compressSteps } from '../lib/sequence-fold.ts'
 import { stepKey } from '../parse/tool-step.ts'
 import {
+  type AgentId,
   addTotals,
   emptyTotals,
   type Session,
@@ -36,6 +37,7 @@ export type WasteKind =
 export type WasteItem = {
   kind: WasteKind
   sessionId: string
+  agent: AgentId
   project: string
   start: string
   /** Human-readable: the folded pattern, the command, the streak. */
@@ -49,8 +51,6 @@ export type WasteItem = {
   /** USD, or null when a model in the span has no rate. */
   cost: number | null
 }
-
-const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit'])
 
 function price(
   s: Session,
@@ -84,6 +84,7 @@ function item(
   return {
     kind,
     sessionId: s.id,
+    agent: s.agent,
     project: s.projectLabel,
     start: s.start,
     label,
@@ -105,8 +106,8 @@ export function detectLoops(s: Session): WasteItem[] {
   const out: WasteItem[] = []
   for (const g of compressSteps(s.steps, stepKey)) {
     if (g.kind !== 'group' || g.repeatCount < MIN_LOOP_REPEATS) continue
-    const hasEdit = g.pattern.some((p) => EDIT_TOOLS.has(p.tool))
-    const hasRun = g.pattern.some((p) => p.tool === 'Bash')
+    const hasEdit = g.pattern.some((p) => p.kind === 'edit')
+    const hasRun = g.pattern.some((p) => p.kind === 'shell')
     const failingIterations = countFailingIterations(g.steps, g.pattern.length)
     if (
       failingIterations < MIN_FAILING_ITERATIONS ||

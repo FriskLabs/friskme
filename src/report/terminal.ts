@@ -1,6 +1,7 @@
 import { join } from 'node:path'
 import { truncate } from '../card/build-card.ts'
 import { FRISKAI_URL } from '../constants.ts'
+import { ANALYZERS } from '../llm/runner.ts'
 import type { WasteKind } from '../waste/detectors.ts'
 import type { Report } from './aggregate.ts'
 import { formatDate, formatShare, formatTokens, formatUsd } from './format.ts'
@@ -29,6 +30,14 @@ export function renderTerminal(
       c,
     ),
   )
+  if (o.agents.length > 1) {
+    lines.push(
+      dim(
+        `  ${o.agents.map((a) => `${a.name} ${a.sessions} (${formatShare(a.share)}, ${formatUsd(a.cost)})`).join(' · ')}`,
+        c,
+      ),
+    )
+  }
 
   if (r.intents.length > 0) {
     lines.push('', bold('What your sessions were for', c))
@@ -39,7 +48,7 @@ export function renderTerminal(
     }
     lines.push(
       dim(
-        `  Share of ${o.sessions} sessions; intents named by ${r.llm.model} via claude -p.`,
+        `  Share of ${o.sessions} sessions; intents named by ${r.llm.model} via ${ANALYZERS[r.llm.analyzer ?? 'claude'].callName}.`,
         c,
       ),
     )

@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { claudeToolKind } from '../agents/claude/tools.ts'
 import {
   emptyTotals,
   type Session,
@@ -24,6 +25,7 @@ function makeSession(
 ): Session {
   const toolSteps: ToolStep[] = steps.map(([tool, detail, isError], i) => ({
     tool,
+    kind: claudeToolKind(tool),
     detail,
     isError,
     messageId: `m${i}`,
@@ -35,6 +37,7 @@ function makeSession(
   )
   return {
     id: 's1',
+    agent: 'claude',
     project: '/p',
     projectLabel: 'p',
     branch: null,
@@ -259,6 +262,31 @@ describe('rate table', () => {
     expect(RATES_AS_OF).toMatch(/^\d{4}-\d{2}-\d{2}$/)
   })
 
+  test('prices Codex models with OpenAI rates', () => {
+    expect(rateFor('gpt-5.5')).toMatchObject({
+      input: 5,
+      output: 30,
+      cacheRead: 0.5,
+    })
+    expect(rateFor('gpt-5-codex-2025-09-15')).toMatchObject({ input: 1.25 })
+    expect(rateFor('gpt-9-unknown')).toBeNull()
+    // 1M uncached input, 1M cached, 1M output on gpt-5.4: 2.5 + 0.25 + 15.
+    expect(
+      priceTokens('gpt-5.4', {
+        ...emptyTotals(),
+        input: 1_000_000,
+        cacheRead: 1_000_000,
+        output: 1_000_000,
+      }),
+    ).toBeCloseTo(17.75)
+    // gpt-5.6 lists a cache-write rate; older OpenAI models charge writes as input.
+    const writes = { ...emptyTotals(), cacheWrite5m: 1_000_000 }
+    expect(priceTokens('gpt-5.6-terra', writes)).toBeCloseTo(2.5)
+    expect(priceTokens('gpt-5.5', writes)).toBeCloseTo(5)
+    // Anthropic keeps its 1.25× default.
+    expect(priceTokens('claude-opus-5-5', writes)).toBeCloseTo(5)
+  })
+
   test('prices every token type, with 1.25× and 2× cache writes', () => {
     const t: TokenTotals = {
       input: 1e6,
@@ -278,7 +306,7 @@ describe('rate table', () => {
       rateFor('claude-sonnet-4-6'),
     )
     expect(rateFor('claude-opus-5-5[1m]')).toEqual(rateFor('claude-opus-5-5'))
-    expect(rateFor('gpt-5')).toBeNull()
-    expect(priceTokens('gpt-5', emptyTotals())).toBeNull()
+    expect(rateFor('mistral-large')).toBeNull()
+    expect(priceTokens('mistral-large', emptyTotals())).toBeNull()
   })
 })

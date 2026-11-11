@@ -1,9 +1,12 @@
+import { ALL_AGENTS, agentName } from '../agents/registry.ts'
 import { cleanPrompt, foldSequence, truncate } from '../card/build-card.ts'
 import { type ScrubCounts, scrubSecrets } from '../card/scrub-secrets.ts'
 import type { SessionLabel } from '../llm/label-pass.ts'
 import type { GroupedIntent, SkillDraft } from '../llm/prompts.ts'
+import type { AnalyzerId } from '../llm/runner.ts'
 import { stepKey } from '../parse/tool-step.ts'
 import type { SensitiveReport } from '../sensitive/summary.ts'
+import type { AgentId } from '../types.ts'
 import {
   addTotals,
   emptyTotals,
@@ -22,7 +25,7 @@ import {
 import { PRICE_BASIS, priceTokens, RATES_AS_OF } from '../waste/rate-table.ts'
 import { slugify } from './format.ts'
 
-export const REPORT_SCHEMA_VERSION = 2
+export const REPORT_SCHEMA_VERSION = 3
 
 export type Count = { name: string; count: number }
 
@@ -47,6 +50,8 @@ export type IntentReport = {
   share: number
   weekly: { weekStart: string; count: number }[]
   topTools: Count[]
+  /** Sessions per agent display name. */
+  agents: Count[]
   examples: string[]
   projects: Count[]
   categories: Count[]
@@ -61,9 +66,15 @@ export type Report = {
   generatedAt: string
   friskVersion: string
   window: { since: string; from: string; to: string; days: number }
-  source: ParseStats & { root: string; filteredByProject: number }
+  source: ParseStats & {
+    /** Where each scanned agent's sessions were read from. */
+    roots: { agent: AgentId; path: string }[]
+    filteredByProject: number
+  }
   llm: {
     enabled: boolean
+    /** The CLI that labeled sessions, or null with --no-llm. */
+    analyzer: AnalyzerId | null
     model: string | null
     calls: number
     failedCalls: number
@@ -72,11 +83,14 @@ export type Report = {
     groupingFellBack: boolean
     labelsLeftUngrouped: number
     skillDraftsFailed: number
-    costUsd: number
+    /** USD frisk's own calls cost, or null when the analyzer does not report it (codex). */
+    costUsd: number | null
     redactions: ScrubCounts
   }
   overview: {
     sessions: number
+    /** Sessions, tokens and dollars per agent, in registry order. */
+    agents: AgentOverview[]
     prompts: number
     toolCalls: number
     toolErrors: number
@@ -137,6 +151,37 @@ export function weekStarts(fromIso: string, toIso: string): string[] {
   return out
 }
 
+export type AgentOverview = {
+  agent: AgentId
+  name: string
+  sessions: number
+  share: number
+  tokens: number
+  /** USD at list price; models without a rate are left out. */
+  cost: number
+}
+
+function agentOverview(sessions: Session[]): AgentOverview[] {
+  return ALL_AGENTS.flatMap((a) => {
+    const list = sessions.filter((s) => s.agent === a.id)
+    if (list.length === 0) return []
+    return [
+      {
+        agent: a.id,
+        name: a.displayName,
+        sessions: list.length,
+        share: list.length / sessions.length,
+        tokens: list.reduce(
+          (n, s) =>
+            n + Object.values(s.tokens).reduce((m, t) => m + sumTokens(t), 0),
+          0,
+        ),
+        cost: list.reduce((n, s) => n + sessionCost(s), 0),
+      },
+    ]
+  })
+}
+
 export function sessionCost(s: Session): number {
   let n = 0
   for (const [model, t] of Object.entries(s.tokens))
@@ -164,7 +209,7 @@ function examplePrompts(sessions: Session[], counts: ScrubCounts): string[] {
 export type AggregateInput = {
   sessions: Session[]
   stats: ParseStats
-  root: string
+  roots: { agent: AgentId; path: string }[]
   filteredByProject: number
   since: string
   generatedAt: string
@@ -242,6 +287,7 @@ export function aggregate(input: AggregateInput): Report {
           (st) => stepKey(st),
           5,
         ),
+        agents: countBy(list, (s) => agentName(s.agent)),
         examples: examplePrompts(list, input.llm.redactions),
         projects: countBy(list, (s) => s.projectLabel, 5),
         categories: countBy(list, (s) => input.labels?.get(s.id)?.category),
@@ -289,12 +335,13 @@ export function aggregate(input: AggregateInput): Report {
     },
     source: {
       ...input.stats,
-      root: input.root,
+      roots: input.roots,
       filteredByProject: input.filteredByProject,
     },
     llm: input.llm,
     overview: {
       sessions: total,
+      agents: agentOverview(sessions),
       prompts: sessions.reduce((n, s) => n + s.prompts.length, 0),
       toolCalls: sessions.reduce((n, s) => n + s.steps.length, 0),
       toolErrors: sessions.reduce((n, s) => n + s.errors, 0),

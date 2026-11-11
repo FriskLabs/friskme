@@ -9,7 +9,7 @@ on:
 
 permissions:
   contents: write # create the GitHub Release
-  id-token: write # npm trusted publishing (OIDC) and provenance
+  id-token: write # npm trusted publishing (OIDC)
 
 jobs:
   release:
@@ -53,7 +53,9 @@ jobs:
       - name: Upgrade npm for trusted publishing
         run: npm install -g npm@^11.5.1
       - name: Publish to npm
-        run: npm publish dist/npm/friskme --provenance --access public
+        # No provenance: npm accepts it only from public repos, and this one
+        # is private. Trusted publishing turns it on by default, so say so.
+        run: npm publish dist/npm/friskme --provenance=false --access public
 
       - name: Create GitHub Release
         env:

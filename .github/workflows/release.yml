@@ -9,7 +9,7 @@ on:
 
 permissions:
   contents: write # create the GitHub Release
-  id-token: write # npm provenance
+  id-token: write # npm trusted publishing (OIDC) and provenance
 
 jobs:
   release:
@@ -48,9 +48,11 @@ jobs:
           test "$(npx --no-install friskme --version)" = "$version"
           "$GITHUB_WORKSPACE/scripts/smoke.sh" npx --no-install frisk
 
+      # Trusted publishing (OIDC, via id-token: write above) needs npm >= 11.5.1;
+      # Node 22 ships npm 10. No npm token is used.
+      - name: Upgrade npm for trusted publishing
+        run: npm install -g npm@^11.5.1
       - name: Publish to npm
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm publish dist/npm/friskme --provenance --access public
 
       - name: Create GitHub Release

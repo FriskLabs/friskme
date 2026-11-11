@@ -235,6 +235,6 @@ frisk is published to npm as `friskme`: one package holding `dist/frisk.js`, fri
 1. Set the same version in `package.json` and `FRISK_VERSION` (`src/constants.ts`), then commit.
 2. Push a tag: `git tag v0.1.0 && git push origin v0.1.0`.
 
-`.github/workflows/release.yml` runs the checks, builds every binary and the Node bundle, lays out the package with `scripts/pack-npm.ts`, installs it and runs `scripts/smoke.sh` against it, publishes to npm with provenance, and creates a GitHub Release that has the binaries and `SHA256SUMS`. It needs an npm automation token in the `NPM_TOKEN` repository secret.
+`.github/workflows/release.yml` runs the checks, builds every binary and the Node bundle, lays out the package with `scripts/pack-npm.ts`, installs it and runs `scripts/smoke.sh` against it, publishes to npm with provenance, and creates a GitHub Release that has the binaries and `SHA256SUMS`. It publishes through npm trusted publishing (OIDC), so no npm token is stored: `friskme` on npmjs.com trusts the `FriskLabs/frisk-cli` repository's `release.yml` workflow.
 
 `src/lib/` holds three modules copied from FriskAI's control-plane monorepo on 2026-11-11: `sequence-fold.ts` (the loop fold), `command-family.ts` (Bash command families) and `mcp-tool-name.ts`. They no longer track the originals.

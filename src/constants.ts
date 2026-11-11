@@ -1,4 +1,4 @@
-export const FRISK_VERSION = '0.1.0'
+export const FRISK_VERSION = '0.2.0'
 
 /**
  * First line of every prompt frisk sends to `claude -p`. A session whose first

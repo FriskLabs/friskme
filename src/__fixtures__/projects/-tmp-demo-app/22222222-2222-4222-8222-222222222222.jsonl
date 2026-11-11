@@ -1,0 +1,1 @@
+{"type": "user", "sessionId": "22222222-2222-4222-8222-222222222222", "cwd": "/tmp/demo-app", "entrypoint": "sdk-cli", "timestamp": "2026-11-02T11:00:00.000Z", "origin": {"kind": "human"}, "message": {"role": "user", "content": "[frisk-cli:v1]\nBelow are session cards."}}

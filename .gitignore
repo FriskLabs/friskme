@@ -1,0 +1,5 @@
+node_modules/
+dist/
+frisk-report/
+*.bun-build
+.DS_Store

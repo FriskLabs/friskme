@@ -1,0 +1,47 @@
+import { describe, expect, test } from 'bun:test'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
+/**
+ * frisk is meant to live in its own repo: no FriskAI workspace packages and no
+ * imports reaching outside this app. This keeps one from creeping back in.
+ */
+const APP = join(import.meta.dir, '..')
+const IMPORT =
+  /(?:import|export)[^'"]*?from\s*['"]([^'"]+)['"]|import\(\s*['"]([^'"]+)['"]\s*\)|require\(\s*['"]([^'"]+)['"]\s*\)/g
+
+describe('standalone', () => {
+  const files = [...new Bun.Glob('{src,scripts}/**/*.ts').scanSync(APP)]
+
+  test('no workspace packages and no imports outside the app', () => {
+    const offenders: string[] = []
+    for (const file of files) {
+      const text = readFileSync(join(APP, file), 'utf8')
+      for (const m of text.matchAll(IMPORT)) {
+        const spec = m[1] ?? m[2] ?? m[3] ?? ''
+        if (spec.startsWith('@friskai/') || spec.startsWith('workspace:'))
+          offenders.push(`${file}: ${spec}`)
+        if (spec.startsWith('.')) {
+          const resolved = join(APP, file, '..', spec)
+          if (!resolved.startsWith(APP)) offenders.push(`${file}: ${spec}`)
+        }
+      }
+    }
+    expect(offenders).toEqual([])
+  })
+
+  test('package.json declares no workspace dependencies', () => {
+    const pkg = JSON.parse(readFileSync(join(APP, 'package.json'), 'utf8'))
+    const deps = {
+      ...pkg.dependencies,
+      ...pkg.devDependencies,
+      ...pkg.peerDependencies,
+    }
+    expect(
+      Object.entries(deps).filter(
+        ([name, v]) =>
+          name.startsWith('@friskai/') || String(v).startsWith('workspace:'),
+      ),
+    ).toEqual([])
+  })
+})

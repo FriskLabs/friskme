@@ -1,0 +1,26 @@
+{
+  "name": "frisk-cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "frisk": "./src/cli.ts"
+  },
+  "scripts": {
+    "dev": "bun src/cli.ts",
+    "test": "bun test --parallel src",
+    "typecheck": "tsc --noEmit",
+    "biome:check": "biome check --fix",
+    "build": "bun scripts/compile.ts",
+    "build:release": "bun scripts/compile.ts --all"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "3.8.1",
+    "libphonenumber-js": "^1.12.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.11",
+    "@types/bun": "1.3.14",
+    "typescript": "6.0.3"
+  }
+}

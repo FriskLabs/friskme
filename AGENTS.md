@@ -11,7 +11,8 @@ bun run typecheck     # tsc --noEmit
 bun run biome:check   # lint + format; applies fixes in place
 bun run dev -- --no-llm
 bun run build         # this platform's binary → dist/
-bun run build:release # darwin-arm64, darwin-x64, linux-x64 → dist/
+bun run build:release # darwin-arm64, darwin-x64, linux-x64, linux-arm64 → dist/
+bun run pack:npm -- <version> # npm packages from dist/ → dist/npm/
 ```
 
 Before you call a change done, run `test`, `typecheck` and `biome:check`, and make sure all three pass.
@@ -32,6 +33,12 @@ The pipeline runs in this order, all under `src/`:
 - `report/`: aggregation, terminal output, HTML, JSON and skill files
 - `cache.ts`: the `~/.frisk/cache` store (`FRISK_CACHE_DIR` overrides it)
 - `lib/`: three modules copied from the FriskAI monorepo. They no longer track the originals, so edit them freely.
+
+Release tooling sits outside `src/`:
+
+- `scripts/targets.ts`: the platforms that are shipped. `compile.ts` builds them, and `npm-manifest.ts` and `pack-npm.ts` turn them into the npm packages.
+- `npm/launcher/frisk.js`: the plain-Node `bin` of the `friskme` npm package. It finds the `friskme-<os>-<arch>` package and runs its binary.
+- `.github/workflows/`: `ci.yml` checks PRs, and `release.yml` publishes on a `v*` tag (see README "Releasing").
 
 ## Invariants (do not break these)
 
@@ -71,6 +78,7 @@ The pipeline runs in this order, all under `src/`:
 ## Workflow
 
 - Track work in GitHub issues on `FriskLabs/frisk-cli`. Reference the issue in commits (`Refs #N`) and close it from the PR (`Closes #N`).
+- To release, follow README "Releasing": keep `package.json` `version` and `FRISK_VERSION` equal, then push a `v<version>` tag. Never publish to npm by hand.
 - Don't add AI attribution to commits or PRs: no `Co-Authored-By` trailer for an assistant, and no "Generated with …" line.
 
 ## Docs

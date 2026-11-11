@@ -1,0 +1,67 @@
+name: Release
+
+# Push a tag like v0.1.0 (matching package.json and FRISK_VERSION) to publish
+# friskme and its platform packages to npm and attach the binaries to a
+# GitHub Release.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # create the GitHub Release
+  id-token: write # npm provenance
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - run: bun install --frozen-lockfile
+      - run: bun run test
+      - run: bun run typecheck
+      - run: bunx biome ci
+
+      - name: Build binaries
+        run: bun run build:release
+      - name: Lay out npm packages
+        run: bun scripts/pack-npm.ts "${GITHUB_REF_NAME#v}"
+
+      - name: Smoke test the installed package
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          mkdir -p "$RUNNER_TEMP/tgz" "$RUNNER_TEMP/smoke"
+          for dir in dist/npm/*/; do
+            npm pack "$dir" --pack-destination "$RUNNER_TEMP/tgz"
+          done
+          cd "$RUNNER_TEMP/smoke"
+          npm init -y > /dev/null
+          npm install "$RUNNER_TEMP/tgz/friskme-$version.tgz" "$RUNNER_TEMP/tgz/friskme-linux-x64-$version.tgz"
+          test "$(npx --no-install frisk --version)" = "$version"
+          test "$(npx --no-install friskme --version)" = "$version"
+
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          # Platform packages first, so the launcher never points at a
+          # version that isn't on the registry yet.
+          for dir in dist/npm/friskme-*/; do
+            npm publish "$dir" --provenance --access public
+          done
+          npm publish dist/npm/friskme --provenance --access public
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd dist
+          sha256sum frisk-* > SHA256SUMS
+          gh release create "$GITHUB_REF_NAME" frisk-* SHA256SUMS --generate-notes

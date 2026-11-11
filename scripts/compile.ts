@@ -8,23 +8,19 @@
  *   bun scripts/compile.ts --all    # every supported platform (release)
  */
 import { rmSync } from 'node:fs'
+import { TARGETS } from './targets.ts'
 
-const TARGETS = [
-  ['bun-darwin-arm64', 'frisk-darwin-arm64'],
-  ['bun-darwin-x64', 'frisk-darwin-x64'],
-  ['bun-linux-x64', 'frisk-linux-x64'],
-] as const
-
-const host = `bun-${process.platform}-${process.arch}`
+const host = `${process.platform}-${process.arch}`
 const all = process.argv.includes('--all')
-const selected = TARGETS.filter(([target]) => all || target === host)
+const selected = TARGETS.filter((t) => all || t.id === host)
 if (selected.length === 0) {
   console.error(`No supported target for ${host}; use --all to cross-compile.`)
   process.exit(1)
 }
 
 rmSync('dist', { recursive: true, force: true })
-for (const [target, name] of selected) {
+for (const { bun: target, id } of selected) {
+  const name = `frisk-${id}`
   const result = await Bun.build({
     entrypoints: ['src/cli.ts'],
     minify: true,

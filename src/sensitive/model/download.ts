@@ -20,8 +20,10 @@ import {
   ORT_VERSION,
   type PinnedFile,
   type Platform,
+  RUNTIME_BINDINGS,
   RUNTIME_LIBS,
   RUNTIME_TARBALL,
+  type RuntimeLib,
 } from './manifest.ts'
 
 export function modelsRoot(env: NodeJS.ProcessEnv = process.env): string {
@@ -34,6 +36,7 @@ export type ModelPaths = {
   modelDir: string
   runtimeDir: string
   runtimeLib: string
+  runtimeBinding: string
 }
 
 export function modelPaths(root: string, platform: Platform): ModelPaths {
@@ -44,6 +47,7 @@ export function modelPaths(root: string, platform: Platform): ModelPaths {
     modelDir: join(modelRoot, MODEL_REPO),
     runtimeDir,
     runtimeLib: join(runtimeDir, RUNTIME_LIBS[platform].fileName),
+    runtimeBinding: join(runtimeDir, RUNTIME_BINDINGS[platform].fileName),
   }
 }
 
@@ -62,10 +66,11 @@ export function missingFiles(
     const p = join(paths.modelDir, f.path)
     return !existsSync(p) || statSync(p).size !== f.size
   })
-  const lib = RUNTIME_LIBS[platform]
+  const wrongSize = (p: string, f: RuntimeLib) =>
+    !existsSync(p) || statSync(p).size !== f.size
   const runtime =
-    !existsSync(paths.runtimeLib) ||
-    statSync(paths.runtimeLib).size !== lib.size
+    wrongSize(paths.runtimeLib, RUNTIME_LIBS[platform]) ||
+    wrongSize(paths.runtimeBinding, RUNTIME_BINDINGS[platform])
   return { model, runtime }
 }
 
@@ -183,7 +188,6 @@ export async function ensureModel(
     })
   }
   if (missing.runtime) {
-    const lib = RUNTIME_LIBS[platform]
     const tgzPath = join(
       paths.runtimeDir,
       `onnxruntime-node-${ORT_VERSION}.tgz`,
@@ -192,16 +196,27 @@ export async function ensureModel(
       fetch: opts.fetch,
       onProgress: opts.progress?.('onnxruntime'),
     })
-    const bytes = extractFromTarGz(await readFile(tgzPath), lib.tarPath)
+    const tgz = await readFile(tgzPath)
     rmSync(tgzPath, { force: true })
-    if (!bytes)
-      throw new Error(`${lib.tarPath} was not in the runtime package.`)
-    const hash = createHash('sha256').update(bytes).digest('hex')
-    if (hash !== lib.sha256)
-      throw new Error(
-        `Checksum mismatch for ${lib.fileName}; nothing was installed.`,
-      )
-    await writeFile(`${paths.runtimeLib}.part`, bytes)
-    renameSync(`${paths.runtimeLib}.part`, paths.runtimeLib)
+    const files: [RuntimeLib, string][] = [
+      [RUNTIME_LIBS[platform], paths.runtimeLib],
+      [RUNTIME_BINDINGS[platform], paths.runtimeBinding],
+    ]
+    // Check both before installing either.
+    const extracted = files.map(([f, dest]) => {
+      const bytes = extractFromTarGz(tgz, f.tarPath)
+      if (!bytes)
+        throw new Error(`${f.tarPath} was not in the runtime package.`)
+      const hash = createHash('sha256').update(bytes).digest('hex')
+      if (hash !== f.sha256)
+        throw new Error(
+          `Checksum mismatch for ${f.fileName}; nothing was installed.`,
+        )
+      return { bytes, dest }
+    })
+    for (const { bytes, dest } of extracted) {
+      await writeFile(`${dest}.part`, bytes)
+      renameSync(`${dest}.part`, dest)
+    }
   }
 }

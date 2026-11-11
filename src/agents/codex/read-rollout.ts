@@ -1,8 +1,12 @@
+import { readFile } from 'node:fs/promises'
+// A namespace import: on a Node without zstd this still loads, and bin.ts
+// prints the version requirement instead of a link error.
+import * as zlib from 'node:zlib'
 import { type JsonlLine, readJsonl } from '../../parse/read-jsonl.ts'
 
 /**
  * Streams a Codex rollout. Codex writes `.jsonl`, and newer builds compress it
- * to `.jsonl.zst`; that is decompressed in memory (Bun has zstd built in).
+ * to `.jsonl.zst`; that is decompressed in memory (`node:zlib` has zstd from Node 22.15).
  */
 export async function* readRollout(path: string): AsyncGenerator<JsonlLine> {
   if (!path.endsWith('.zst')) {
@@ -11,9 +15,7 @@ export async function* readRollout(path: string): AsyncGenerator<JsonlLine> {
   }
   let text: string
   try {
-    const bytes = Bun.zstdDecompressSync(
-      new Uint8Array(await Bun.file(path).arrayBuffer()),
-    )
+    const bytes = zlib.zstdDecompressSync(await readFile(path))
     text = new TextDecoder().decode(bytes)
   } catch {
     yield { ok: false }

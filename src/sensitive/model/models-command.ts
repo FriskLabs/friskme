@@ -15,6 +15,7 @@ import {
   MODEL_NAME,
   MODEL_REVISION,
   ORT_VERSION,
+  RUNTIME_BINDINGS,
   RUNTIME_LIBS,
 } from './manifest.ts'
 
@@ -61,10 +62,12 @@ export async function modelsCommand(
         if ((await sha256File(join(paths.modelDir, f.path))) !== f.sha256)
           bad.push(f.path)
       }
-      if (
-        (await sha256File(paths.runtimeLib)) !== RUNTIME_LIBS[platform].sha256
-      )
-        bad.push(RUNTIME_LIBS[platform].fileName)
+      for (const [path, f] of [
+        [paths.runtimeLib, RUNTIME_LIBS[platform]],
+        [paths.runtimeBinding, RUNTIME_BINDINGS[platform]],
+      ] as const) {
+        if ((await sha256File(path)) !== f.sha256) bad.push(f.fileName)
+      }
       say(
         bad.length === 0
           ? '  status    installed, all hashes verified'

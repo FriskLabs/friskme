@@ -1,4 +1,3 @@
-#!/usr/bin/env bun
 import { resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { parseAgentList, resolveSources } from './agents/registry.ts'
@@ -191,16 +190,4 @@ export async function main(argv: string[]): Promise<number> {
     salt: loadSalt(),
   })
   return result.exitCode
-}
-
-if (import.meta.main) {
-  main(process.argv.slice(2)).then(
-    (code) => process.exit(code),
-    (err) => {
-      process.stderr.write(
-        `frisk failed: ${err instanceof Error ? err.stack : String(err)}\n`,
-      )
-      process.exit(1)
-    },
-  )
 }

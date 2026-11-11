@@ -11,7 +11,7 @@ No account and no sign-up. frisk makes no network calls of its own, except one o
 
 ## Install
 
-Run it with npx. You need Node 18 or newer, and you don't need Bun:
+Run it with npx. You need Node 22.15 or newer, and you don't need Bun:
 
 ```sh
 npx friskme
@@ -19,9 +19,9 @@ npx friskme
 
 To install the `frisk` command, run `npm i -g friskme`.
 
-The npm package installs a prebuilt binary for your platform: macOS (Apple silicon or Intel) or Linux (x64 or arm64, with glibc). npm downloads it at install time; frisk itself downloads nothing. Alpine and other musl-based Linux distributions aren't supported.
+The npm package is one JavaScript file of about 1 MB, with no dependencies and nothing to compile. npm downloads it at install time; frisk itself downloads nothing. It's tested on macOS and Linux. It should also run on Windows and on Alpine and other musl-based Linux distributions, but those aren't tested. On Windows, the analyzer must be a native `claude.exe` or `codex.exe`, not an npm `.cmd` shim. `--pii-model` works only on macOS (Apple silicon or Intel) and Linux x64.
 
-You can also download a binary from [GitHub Releases](https://github.com/FriskLabs/frisk-cli/releases) and put it on your `PATH`. Each release includes a `SHA256SUMS` file.
+If you don't have Node, download a standalone binary (about 70–90 MB) from [GitHub Releases](https://github.com/FriskLabs/frisk-cli/releases) and put it on your `PATH`. Each release includes a `SHA256SUMS` file.
 
 | Platform             | File                 |
 | -------------------- | -------------------- |
@@ -34,7 +34,7 @@ You can also download a binary from [GitHub Releases](https://github.com/FriskLa
 chmod +x frisk-darwin-arm64 && mv frisk-darwin-arm64 /usr/local/bin/frisk
 ```
 
-To build from this repo, run `bun run build:release`. That writes all four binaries to `dist/`; `build` compiles only your own platform.
+To build from this repo, run `bun run build:release`. That writes all four binaries to `dist/`; `build` compiles only your own platform, and `build:npm` writes the Node bundle to `dist/frisk.js`.
 
 Naming intents and drafting skills needs one model CLI, logged in: `claude` (Claude Code) or `codex`. frisk uses whichever you have, Claude first; `--analyzer` picks one. Without either, run `frisk --no-llm` to get the overview and waste sections only.
 
@@ -179,7 +179,7 @@ On a month of history (about 95M characters) this takes a few seconds. It runs l
 
 **`--pii-model` (opt-in):** names and places need a model, so frisk can also run [`bert-base-NER`](https://huggingface.co/dslim/bert-base-NER) (MIT) on your machine.
 
-- **Download:** the first run asks before downloading about 190 MB. Most of it is the model (109 MB, from huggingface.co); the rest is the ONNX Runtime package from registry.npmjs.org, of which only your platform's library (~30 MB) is kept. Every file is checked against a SHA-256 pinned in frisk, and a mismatch deletes the file and stops. It installs into `~/.frisk/models` (set `FRISK_MODELS_DIR` to move it), and later runs work offline.
+- **Download:** the first run asks before downloading about 190 MB. Most of it is the model (109 MB, from huggingface.co); the rest is the ONNX Runtime package from registry.npmjs.org, of which only your platform's library (~30 MB) and its Node binding (~0.3 MB) are kept. It's available on macOS (Apple silicon or Intel) and Linux x64. Every file is checked against a SHA-256 pinned in frisk, and a mismatch deletes the file and stops. It installs into `~/.frisk/models` (set `FRISK_MODELS_DIR` to move it), and later runs work offline.
 - **Scope and speed:** by default it reads what you typed and the agent's replies, about 1.3M characters, in under a minute (roughly 6k tokens/s on an Apple M-series laptop). `--pii-model-scope all` adds tool input and output and subagents; that can take tens of minutes on a month of history. Results are cached per chunk, so re-runs only scan new text.
 - **What it reports:** names with two or more words, at high confidence. Places are listed in report.json only.
 - **Effect on the analyzer:** names it finds are also masked in the cards sent for labeling.
@@ -230,11 +230,11 @@ To add an agent, see "Adding an agent" in `AGENTS.md`.
 
 ### Releasing
 
-frisk is published to npm as `friskme`, which is a small Node launcher, plus one `friskme-<os>-<arch>` package per platform that holds the binary. npm installs only the platform package that matches the machine. To release:
+frisk is published to npm as `friskme`: one package holding `dist/frisk.js`, frisk and its dependencies bundled for Node by `scripts/bundle.ts`. The compiled binaries go to GitHub Releases only. To release:
 
 1. Set the same version in `package.json` and `FRISK_VERSION` (`src/constants.ts`), then commit.
 2. Push a tag: `git tag v0.1.0 && git push origin v0.1.0`.
 
-`.github/workflows/release.yml` runs the checks, builds every binary, lays out the packages with `scripts/pack-npm.ts`, smoke-tests the install, publishes to npm with provenance, and creates a GitHub Release that has the binaries and `SHA256SUMS`. It needs an npm automation token in the `NPM_TOKEN` repository secret.
+`.github/workflows/release.yml` runs the checks, builds every binary and the Node bundle, lays out the package with `scripts/pack-npm.ts`, installs it and runs `scripts/smoke.sh` against it, publishes to npm with provenance, and creates a GitHub Release that has the binaries and `SHA256SUMS`. It needs an npm automation token in the `NPM_TOKEN` repository secret.
 
 `src/lib/` holds three modules copied from FriskAI's control-plane monorepo on 2026-11-11: `sequence-fold.ts` (the loop fold), `command-family.ts` (Bash command families) and `mcp-tool-name.ts`. They no longer track the originals.

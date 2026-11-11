@@ -1,6 +1,6 @@
 # AGENTS.md
 
-frisk is a Bun + TypeScript CLI. It reads coding-agent sessions (Claude Code from `~/.claude/projects/**` or `$CLAUDE_CONFIG_DIR/projects/**`; Codex from `~/.codex/sessions/**` or `$CODEX_HOME/sessions/**`) and writes one local report to `frisk-report/`: `report.html`, `report.json` and draft `skills/<intent>/SKILL.md` files. `README.md` is the user-facing spec. Read it before changing behavior.
+frisk is a TypeScript CLI, developed and tested with Bun and run on Node (npm) or as a compiled Bun binary (GitHub Releases). It reads coding-agent sessions (Claude Code from `~/.claude/projects/**` or `$CLAUDE_CONFIG_DIR/projects/**`; Codex from `~/.codex/sessions/**` or `$CODEX_HOME/sessions/**`) and writes one local report to `frisk-report/`: `report.html`, `report.json` and draft `skills/<intent>/SKILL.md` files. `README.md` is the user-facing spec. Read it before changing behavior.
 
 ## Commands
 
@@ -12,7 +12,9 @@ bun run biome:check   # lint + format; applies fixes in place
 bun run dev -- --no-llm
 bun run build         # this platform's binary → dist/
 bun run build:release # darwin-arm64, darwin-x64, linux-x64, linux-arm64 → dist/
-bun run pack:npm -- <version> # npm packages from dist/ → dist/npm/
+bun run build:npm     # the Node bundle → dist/frisk.js
+bun run pack:npm -- <version> # the npm package from dist/frisk.js → dist/npm/friskme/
+scripts/smoke.sh node dist/frisk.js # run a build against the fixtures
 ```
 
 Before you call a change done, run `test`, `typecheck` and `biome:check`, and make sure all three pass.
@@ -21,6 +23,7 @@ Before you call a change done, run `test`, `typecheck` and `biome:check`, and ma
 
 The pipeline runs in this order, all under `src/`:
 
+- `bin.ts`: the entry point (Node version check, then `cli.ts` `main`)
 - `cli.ts`: argument parsing, `HELP`, and the `cache` / `models` subcommands
 - `scan.ts`: orchestration, confirmation prompts and writing the output files
 - `agents/`: one adapter per agent (`claude/`, `codex/`), each implementing `AgentSource` (`agents/types.ts`): find session files, fold one into the agent-neutral `Session`, read subagent usage. `registry.ts` lists them and resolves `--agent`.
@@ -36,8 +39,9 @@ The pipeline runs in this order, all under `src/`:
 
 Release tooling sits outside `src/`:
 
-- `scripts/targets.ts`: the platforms that are shipped. `compile.ts` builds them, and `npm-manifest.ts` and `pack-npm.ts` turn them into the npm packages.
-- `npm/launcher/frisk.js`: the plain-Node `bin` of the `friskme` npm package. It finds the `friskme-<os>-<arch>` package and runs its binary.
+- `scripts/bundle.ts`: builds `dist/frisk.js`, the Node bundle that `npm-manifest.ts` and `pack-npm.ts` turn into the `friskme` package.
+- `scripts/targets.ts`: the platforms that get a compiled binary. `compile.ts` builds them.
+- `scripts/build-plugins.ts`: shared by both builds. It stubs `sharp` and swaps onnxruntime-node's binding loader for `ort-binding-stub.cjs`, which loads the binding `--pii-model` downloaded.
 - `.github/workflows/`: `ci.yml` checks PRs, and `release.yml` publishes on a `v*` tag (see README "Releasing").
 
 ## Invariants (do not break these)
@@ -49,6 +53,7 @@ Release tooling sits outside `src/`:
 - **Redact before you cache or send.** Everything the sensitive scan finds is masked in a card before the card is cached or sent. A raw sensitive value never reaches the cache, the terminal or the report, unless the user passes `--reveal`. With `--reveal`, report files are written with mode 0600.
 - **The model never computes numbers.** Counts, shares, tokens and dollars all come from code.
 - **Bump `PROMPT_VERSION` (`llm/prompts.ts`) whenever a prompt or schema changes.** It is part of every cache key.
+- **Runtime code runs on Node ≥ 22.15.** Use `node:*` APIs in `src/`, never `Bun.*`; tests and `scripts/` may use Bun. `src/standalone.test.ts` checks this.
 - **frisk is standalone.** No `@friskai/*` or `workspace:` dependencies, and no imports that reach outside the repo. `src/standalone.test.ts` enforces this.
 
 ## Tests

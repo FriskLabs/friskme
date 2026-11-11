@@ -1,43 +1,25 @@
 import { describe, expect, test } from 'bun:test'
-import {
-  launcherManifest,
-  platformManifest,
-  platformPackageName,
-} from './npm-manifest.ts'
-import { TARGETS } from './targets.ts'
+import { packageManifest } from './npm-manifest.ts'
 
 const info = { version: '1.2.3', license: 'MIT', description: 'd' }
 
-describe('npm manifests', () => {
-  test('launcher depends on every platform package at the same version', () => {
-    const m = launcherManifest(info, TARGETS)
+describe('npm manifest', () => {
+  test('one package, versioned, with both commands', () => {
+    const m = packageManifest(info)
     expect(m.name).toBe('friskme')
     expect(m.version).toBe('1.2.3')
-    expect(m.optionalDependencies).toEqual(
-      Object.fromEntries(TARGETS.map((t) => [`friskme-${t.id}`, '1.2.3'])),
-    )
+    expect(m.bin).toEqual({ frisk: 'bin/frisk.js', friskme: 'bin/frisk.js' })
   })
 
-  test('launcher exposes both frisk and friskme commands', () => {
-    expect(launcherManifest(info, TARGETS).bin).toEqual({
-      frisk: 'bin/frisk.js',
-      friskme: 'bin/frisk.js',
-    })
+  test('installs nothing else: the bundle carries every dependency', () => {
+    const m = packageManifest(info)
+    expect(m.dependencies).toBeUndefined()
+    expect(m.optionalDependencies).toBeUndefined()
+    expect(m.os).toBeUndefined()
+    expect(m.cpu).toBeUndefined()
   })
 
-  test('platform packages match process.platform and process.arch', () => {
-    for (const t of TARGETS) {
-      const m = platformManifest(info, t)
-      expect(m.name).toBe(platformPackageName(t))
-      expect(`${(m.os as string[])[0]}-${(m.cpu as string[])[0]}`).toBe(t.id)
-      expect(m.libc).toEqual(t.os === 'linux' ? ['glibc'] : undefined)
-    }
-  })
-
-  test('the launcher knows every target', async () => {
-    const src = await Bun.file(
-      new URL('../npm/launcher/frisk.js', import.meta.url),
-    ).text()
-    for (const t of TARGETS) expect(src).toContain(`'${t.id}'`)
+  test('requires a Node with zstd in node:zlib', () => {
+    expect(packageManifest(info).engines).toEqual({ node: '>=22.15' })
   })
 })

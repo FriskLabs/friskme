@@ -2,6 +2,7 @@
  * What the label, group and skill passes need from a model: one structured
  * call at a time. `claude -p` and `codex exec` each implement it.
  */
+import { spawn } from 'node:child_process'
 
 export type SpawnResult = { exitCode: number; stdout: string; stderr: string }
 export type SpawnFn = (
@@ -10,20 +11,33 @@ export type SpawnFn = (
   opts: { cwd: string },
 ) => Promise<SpawnResult>
 
-export const defaultSpawn: SpawnFn = async (args, stdin, opts) => {
-  const proc = Bun.spawn(args, {
-    cwd: opts.cwd,
-    stdin: new Blob([stdin]),
-    stdout: 'pipe',
-    stderr: 'pipe',
+export const defaultSpawn: SpawnFn = (args, stdin, opts) =>
+  new Promise((resolve, reject) => {
+    const [cmd, ...rest] = args
+    if (!cmd) return reject(new Error('spawn: no command'))
+    // No shell: the arguments carry JSON and multi-line text verbatim.
+    const proc = spawn(cmd, rest, {
+      cwd: opts.cwd,
+      stdio: 'pipe',
+      windowsHide: true,
+    })
+    const out: Buffer[] = []
+    const err: Buffer[] = []
+    proc.stdout.on('data', (c: Buffer) => out.push(c))
+    proc.stderr.on('data', (c: Buffer) => err.push(c))
+    proc.stdin.on('error', () => {
+      // The child exited before reading stdin (EPIPE); its exit code tells the story.
+    })
+    proc.on('error', reject)
+    proc.on('close', (code) =>
+      resolve({
+        exitCode: code ?? 1,
+        stdout: Buffer.concat(out).toString('utf8'),
+        stderr: Buffer.concat(err).toString('utf8'),
+      }),
+    )
+    proc.stdin.end(stdin)
   })
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
-  return { exitCode, stdout, stderr }
-}
 
 export type RunOutcome<T> =
   | { ok: true; value: T; attempts: number; costUsd: number }

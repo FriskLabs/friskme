@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import type { TextVisit } from '../parse/common.ts'
 import { detectInText } from './detect.ts'
 import { fingerprint, maskValue } from './mask.ts'
@@ -36,8 +37,8 @@ export class SensitiveCollector {
   readonly modelSegments: TextSegment[] = []
   chars = 0
   segments = 0
-  /** Detections by a 64-bit hash of the text, so repeats are not rescanned and text is not retained. */
-  private readonly seenText = new Map<bigint | number, Detection[]>()
+  /** Detections by a hash of the text, so repeats are not rescanned and text is not retained. In memory only. */
+  private readonly seenText = new Map<string, Detection[]>()
 
   constructor(
     private readonly salt: Buffer,
@@ -56,7 +57,7 @@ export class SensitiveCollector {
       this.chars += seg.text.length
       if (this.opts.rules) {
         // The same file read twice is detected once; each occurrence still counts.
-        const h = Bun.hash(seg.text)
+        const h = createHash('sha1').update(seg.text).digest('base64')
         let found = this.seenText.get(h)
         if (!found) {
           found = detectInText(seg.text)

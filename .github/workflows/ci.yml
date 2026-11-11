@@ -20,3 +20,11 @@ jobs:
       - run: bun run test
       - run: bun run typecheck
       - run: bunx biome ci
+
+      # The npm package is a Node bundle: build it and run it on the oldest
+      # Node it supports (zstd in node:zlib arrived in 22.15).
+      - run: bun run build:npm
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.15"
+      - run: scripts/smoke.sh node dist/frisk.js

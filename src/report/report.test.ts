@@ -240,6 +240,8 @@ describe('scan end to end (synthetic transcripts, fake claude)', () => {
     expect(html).not.toMatch(/<script|<link|src="http/)
     expect(printed).toContain('100.0%  Fix tests')
     expect(printed).toContain('Report:')
+    expect(html).toContain('Nothing was sent to FriskAI.')
+    expect(printed).toContain('Nothing was sent to FriskAI.')
   })
 
   test('--no-llm makes no model calls', async () => {
@@ -248,14 +250,19 @@ describe('scan end to end (synthetic transcripts, fake claude)', () => {
       calls++
       throw new Error('should not be called')
     }
+    const lines: string[] = []
     const res = await scan({
       ...base(),
       spawn,
       noLlm: true,
+      log: (l) => lines.push(l),
       out: () => undefined,
     })
     expect(res.exitCode).toBe(0)
     expect(calls).toBe(0)
+    expect(lines.join('\n')).toContain(
+      'Nothing is sent to FriskAI or anywhere else',
+    )
     expect(res.report?.intents).toEqual([])
     expect(existsSync(join(dir, 'out', 'report.html'))).toBe(true)
   })
@@ -320,6 +327,9 @@ describe('scan end to end (synthetic transcripts, fake claude)', () => {
     )
     expect(lines.join('\n')).toContain(
       'codex exec calls with the default model',
+    )
+    expect(lines.join('\n')).toContain(
+      'Nothing is sent to FriskAI: no account, no telemetry. Only the codex exec calls above leave this machine.',
     )
     const report = JSON.parse(
       readFileSync(join(dir, 'out', 'report.json'), 'utf8'),

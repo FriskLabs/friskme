@@ -143,6 +143,10 @@ export function renderTerminal(
   lines.push('', `Report: ${join(opts.outDir, 'report.html')}`)
   lines.push(
     dim(
+      'This report was made on your machine. Nothing was sent to FriskAI.',
+      c,
+    ),
+    dim(
       `For teams: see this across every developer and agent with FriskAI → ${FRISKAI_URL}`,
       c,
     ),

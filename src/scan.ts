@@ -17,7 +17,7 @@ import {
   runLabelPass,
   type SessionLabel,
 } from './llm/label-pass.ts'
-import { progressBar, runPool } from './llm/pool.ts'
+import { runPool } from './llm/pool.ts'
 import { preflight } from './llm/preflight.ts'
 import { type GroupedIntent, SYSTEM_PROMPT } from './llm/prompts.ts'
 import {
@@ -29,6 +29,7 @@ import {
   type SpawnFn,
 } from './llm/runner.ts'
 import { draftSkill, findWorkflow } from './llm/skill-pass.ts'
+import { createStatus, type Status } from './progress.ts'
 import {
   aggregate,
   type Report,
@@ -92,6 +93,8 @@ export type ScanOptions = {
   log?: (line: string) => void
   out?: (text: string) => void
   confirm?: (question: string) => Promise<boolean>
+  /** The live progress line; by default on stderr, animated only on a terminal. */
+  status?: Status
 }
 
 async function ttyConfirm(question: string): Promise<boolean> {
@@ -104,13 +107,27 @@ async function ttyConfirm(question: string): Promise<boolean> {
 export type ScanResult = { exitCode: number; report?: Report }
 
 export async function scan(opts: ScanOptions): Promise<ScanResult> {
-  const log = opts.log ?? ((l: string) => process.stderr.write(`${l}\n`))
+  const status = opts.status ?? createStatus()
+  try {
+    return await runScan(opts, status)
+  } finally {
+    status.done()
+  }
+}
+
+async function runScan(opts: ScanOptions, status: Status): Promise<ScanResult> {
+  const log = opts.log ?? status.log
   const out = opts.out ?? ((t: string) => process.stdout.write(t))
   const now = opts.now ?? (() => new Date())
 
   let binary: string | null = null
   let analyzerId: AnalyzerId | null = null
   if (!opts.noLlm) {
+    status.phase(
+      opts.analyzer
+        ? `Checking that ${opts.analyzer} is installed and logged in`
+        : 'Looking for a logged-in claude or codex CLI',
+    )
     const pf = await preflight({
       analyzer: opts.analyzer,
       which: opts.which,
@@ -120,6 +137,7 @@ export async function scan(opts: ScanOptions): Promise<ScanResult> {
       log(pf.message)
       return { exitCode: 2 }
     }
+    status.done()
     binary = pf.binary
     analyzerId = pf.analyzer
   }
@@ -152,6 +170,8 @@ export async function scan(opts: ScanOptions): Promise<ScanResult> {
   log(
     `Reading ${rootList || '(no agent session directories found)'} (read-only)…`,
   )
+  status.phase('Finding session files')
+  let readTick: ((done: number, total: number) => void) | null = null
   const { sessions, stats, filteredByProject } = await loadSessions(
     opts.sources,
     {
@@ -159,8 +179,21 @@ export async function scan(opts: ScanOptions): Promise<ScanResult> {
       project: opts.project,
       maxSessions: opts.maxSessions,
       textVisitor: collector ? (id) => collector.visitor(id) : undefined,
+      onProgress: (agent, done, total) => {
+        if (done === 0) {
+          const scanning = collector ? ' and scanning for secrets' : ''
+          readTick = status.bar(`Reading ${agent} sessions${scanning}`, {
+            total,
+            unit: 'files',
+          })
+        }
+        readTick?.(done, total)
+        // The next source's file walk runs before its first progress call.
+        if (done === total) status.phase('Finding session files')
+      },
     },
   )
+  status.done()
   if (sessions.length === 0) {
     const scanned = opts.sources.map((s) => s.source.displayName).join(', ')
     log(
@@ -184,9 +217,15 @@ export async function scan(opts: ScanOptions): Promise<ScanResult> {
 
   const redactions: ScrubCounts = {}
   const cache = new Cache(opts.cacheDir)
-  const cards = new Map<string, string>(
-    sessions.map((s) => [s.id, buildCard(s, redactions)]),
+  const cards = buildCards(
+    sessions,
+    redactions,
+    status.bar('Building session cards and redacting them', {
+      total: sessions.length,
+      unit: 'sessions',
+    }),
   )
+  status.done()
   const jobs = sessions.map((s) => ({
     sessionId: s.id,
     card: cards.get(s.id)!,
@@ -205,9 +244,11 @@ export async function scan(opts: ScanOptions): Promise<ScanResult> {
 
   const needsConfirm =
     !opts.noLlm || (modelPlan !== null && modelPlan.downloadBytes > 0)
+  let pending = 0
   if (analyzer) {
-    const pending = planLabels(jobs, new Cache(opts.cacheDir), cacheModel).todo
-      .length
+    status.phase('Checking the cache for earlier labels')
+    pending = planLabels(jobs, cache, cacheModel).todo.length
+    status.done()
     const labelCalls = batchCount(pending)
     log(
       `Will run about ${labelCalls + 1} ${analyzer.callName} calls with ${modelLabel(model)} (${labelCalls} labeling batches for ${pending} new sessions, ${sessions.length - pending} cached; 1 grouping), plus one per repeated workflow found. Calls use your own ${analyzer.loginName} login and send scrubbed prompt excerpts, never whole transcripts.`,
@@ -246,14 +287,34 @@ export async function scan(opts: ScanOptions): Promise<ScanResult> {
       reveal: opts.reveal,
       fetch: opts.fetch,
       engine: opts.nerEngine,
-      progress: (label) => progressBar(label),
+      progress: (label) =>
+        label === 'scanning for names'
+          ? status.bar('Scanning for names on this machine', {
+              unit: 'chunks',
+            })
+          : status.bar(`Downloading ${label}`, {
+              format: (n) => `${(n / 1e6).toFixed(0)} MB`,
+            }),
       log,
     })
+    status.done(
+      `Scanned ${mp.model.chunks} chunks for names (${mp.model.cachedChunks} cached)`,
+    )
     nerModel = mp.model
     // Names the model found are masked in cards before anything reaches the analyzer.
     if (mp.personFingerprints.size > 0) {
       const mask = nameMasker(mp.personFingerprints, opts.salt)
-      for (const s of sessions) cards.set(s.id, buildCard(s, redactions, mask))
+      const masked = buildCards(
+        sessions,
+        redactions,
+        status.bar('Masking names in session cards', {
+          total: sessions.length,
+          unit: 'sessions',
+        }),
+        mask,
+      )
+      status.done()
+      for (const [id, card] of masked) cards.set(id, card)
       for (const j of jobs) j.card = cards.get(j.sessionId)!
     }
   }
@@ -296,14 +357,43 @@ export async function scan(opts: ScanOptions): Promise<ScanResult> {
 
   try {
     if (runner) {
+      const inFlight =
+        (tick: (done: number, total: number) => void) =>
+        (done: number, total: number) => {
+          tick(done, total)
+          const running = Math.min(CONCURRENCY, total - done)
+          status.note(running > 0 ? `${running} in flight` : null)
+        }
+      const labelProgress = () => {
+        if (pending === 0) return undefined
+        const batches = batchCount(pending)
+        const tick = inFlight(
+          status.bar(`Labeling ${pending} sessions with ${modelLabel(model)}`, {
+            total: batches,
+            unit: 'batches',
+          }),
+        )
+        tick(0, batches)
+        return tick
+      }
       const lp = await runLabelPass({
         jobs,
         runner,
         cache,
         model: cacheModel,
         concurrency: CONCURRENCY,
-        onProgress: progressBar('labeling sessions'),
+        onProgress: labelProgress(),
+        onRetry: (n) => {
+          const tick = status.bar(`Retrying ${n} sessions the model skipped`, {
+            unit: 'batches',
+          })
+          return inFlight(tick)
+        },
       })
+      const fresh = lp.labels.size - lp.cached
+      status.done(
+        `Labeled ${fresh} sessions (${lp.cached} from cache${lp.unlabeled.length ? `, ${lp.unlabeled.length} left unlabeled` : ''})`,
+      )
       labels = lp.labels
       llm.labelsFromCache = lp.cached
       llm.unlabeledSessions = lp.unlabeled.length
@@ -322,7 +412,9 @@ export async function scan(opts: ScanOptions): Promise<ScanResult> {
         entry.count++
         counts.set(key, entry)
       }
-      log('  grouping labels into intents…')
+      status.phase(
+        `Grouping ${counts.size} labels into intents (1 ${analyzer?.callName} call)`,
+      )
       const gp = await runGroupPass({
         inputs: [...counts.values()],
         runner,
@@ -330,6 +422,7 @@ export async function scan(opts: ScanOptions): Promise<ScanResult> {
         model: cacheModel,
       })
       intents = gp.intents
+      status.done(`Grouped labels into ${intents.length} intents`)
       llm.groupingFellBack = gp.fellBackToCategories
       llm.labelsLeftUngrouped = gp.unassigned
 
@@ -344,17 +437,21 @@ export async function scan(opts: ScanOptions): Promise<ScanResult> {
         outDir: opts.outDir,
         date: formatDate(now().toISOString()),
         onFail: () => llm.skillDraftsFailed++,
+        status,
       })
       llm.calls = runner.calls
       llm.failedCalls = runner.failures
       llm.costUsd = runner.costUsd
     } else {
+      status.phase('Finding repeated tool sequences')
       workflows = structuralWorkflows(sessions)
+      status.done()
     }
   } finally {
     runner?.dispose()
   }
 
+  status.phase('Writing report.html and report.json')
   const report = aggregate({
     sessions,
     stats,
@@ -385,6 +482,7 @@ export async function scan(opts: ScanOptions): Promise<ScanResult> {
       chmodSync(join(opts.outDir, f), 0o600)
   }
 
+  status.done()
   const summary = renderTerminal(report, {
     outDir: opts.outDir,
     color: !opts.json && process.stdout.isTTY === true,
@@ -409,7 +507,9 @@ async function draftWorkflows(opts: {
   outDir: string
   date: string
   onFail: () => void
+  status: Status
 }): Promise<WorkflowReport[]> {
+  opts.status.phase('Finding repeated workflows')
   const intentOf = new Map<string, GroupedIntent>()
   for (const it of opts.intents)
     for (const l of it.labels) intentOf.set(l.toLowerCase(), it)
@@ -432,11 +532,20 @@ async function draftWorkflows(opts: {
       } => c.cluster !== null,
     )
     .sort((a, b) => b.cluster.members.length - a.cluster.members.length)
+  opts.status.done()
+  const tick =
+    candidates.length > 0
+      ? opts.status.bar('Drafting skills for repeated workflows', {
+          total: candidates.length,
+          unit: 'skills',
+        })
+      : undefined
 
   const results = await runPool(
     candidates,
     CONCURRENCY,
     async ({ intent, cluster }) => {
+      opts.status.note(`“${intent.name}”`)
       const slug = slugify(intent.name)
       const medoid = byId.get(cluster.members[0]!)!
       const cards = cluster.members.slice(0, 5).map((id) => opts.cards.get(id)!)
@@ -475,9 +584,30 @@ async function draftWorkflows(opts: {
         structural: false,
       } satisfies WorkflowReport
     },
-    candidates.length > 0 ? progressBar('drafting skills') : undefined,
+    tick,
   )
+  if (candidates.length > 0) {
+    const drafted = results.filter((r) => r.skill).length
+    opts.status.done(
+      `Drafted ${drafted} of ${candidates.length} skills into ${join(opts.outDir, 'skills')}`,
+    )
+  }
   return results
+}
+
+/** One card per session, reporting progress as it goes (the loop is synchronous). */
+function buildCards(
+  sessions: Session[],
+  redactions: ScrubCounts,
+  tick: (done: number, total: number) => void,
+  mask?: (text: string) => string,
+): Map<string, string> {
+  const cards = new Map<string, string>()
+  for (const [i, s] of sessions.entries()) {
+    cards.set(s.id, buildCard(s, redactions, mask))
+    tick(i + 1, sessions.length)
+  }
+  return cards
 }
 
 /** --no-llm: recurring tool-sequence shapes across all sessions, no names. */

@@ -63,6 +63,8 @@ Other options:
 - `frisk cache clear`
 - `frisk models list|download|remove`
 
+While it runs, frisk keeps one live status line on stderr: what it is doing now, progress counts and time spent in that step. The line animates only in an interactive terminal. When stderr is piped, under `CI`, or with `TERM=dumb`, frisk prints only its plain log lines.
+
 Output:
 
 - `frisk-report/report.html`: one self-contained page, with no external assets.

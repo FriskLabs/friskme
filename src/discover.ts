@@ -16,6 +16,8 @@ export type LoadOptions = {
    * are discarded by the caller.
    */
   textVisitor?: (sessionId: string) => TextVisitor
+  /** Called once a source's files are found (done = 0), then after each file. */
+  onProgress?: (agent: string, done: number, total: number) => void
 }
 
 export type LoadResult = {
@@ -49,39 +51,49 @@ export async function loadSessions(
     const agentStats = { files: files.length, sessions: 0 }
     stats.byAgent[source.id] = agentStats
     stats.files += files.length
-    for (const f of files) {
-      // A file last written before the window cannot hold a session inside it.
-      if (f.mtimeMs < opts.sinceMs) {
-        stats.skippedOutsideWindow++
-        continue
-      }
+    const progress = (done: number) =>
+      opts.onProgress?.(source.displayName, done, files.length)
+    const readOne = async (
+      f: (typeof files)[number],
+    ): Promise<Session | null> => {
       const onText = opts.textVisitor?.(f.sessionId)
       const outcome = await source.parse(f, counters, onText)
       if (outcome.status === 'no-prompt') {
         stats.skippedNoPrompt++
-        continue
+        return null
       }
       if (outcome.status === 'frisk-self') {
         stats.skippedFriskSelf++
-        continue
+        return null
       }
       const s = outcome.session
       if (Date.parse(s.end) < opts.sinceMs) {
         stats.skippedOutsideWindow++
-        continue
+        return null
       }
       if (
         opts.project &&
         !s.project.toLowerCase().includes(opts.project.toLowerCase())
       ) {
         filteredByProject++
-        continue
+        return null
       }
       for (const sub of f.subagentPaths) {
         stats.subagentFiles++
         mergeSubagentUsage(s, await source.parseSubagent(sub, counters, onText))
       }
-      sessions.push(s)
+      return s
+    }
+    progress(0)
+    for (const [i, f] of files.entries()) {
+      // A file last written before the window cannot hold a session inside it.
+      if (f.mtimeMs < opts.sinceMs) {
+        stats.skippedOutsideWindow++
+      } else {
+        const s = await readOne(f)
+        if (s) sessions.push(s)
+      }
+      progress(i + 1)
     }
   }
   sessions.sort((a, b) => (a.start < b.start ? 1 : -1))

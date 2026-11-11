@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline/promises'
-import { progressBar } from '../../llm/pool.ts'
+import { createStatus } from '../../progress.ts'
 import {
   downloadPlan,
   ensureModel,
@@ -100,9 +100,15 @@ export async function modelsCommand(
       rl.close()
       if (!/^y(es)?$/i.test(answer.trim())) return 0
     }
-    await ensureModel(paths, platform, {
-      progress: (label) => progressBar(label),
-    })
+    const status = createStatus()
+    try {
+      await ensureModel(paths, platform, {
+        progress: (label) =>
+          status.bar(`Downloading ${label}`, { format: mb, unit: '' }),
+      })
+    } finally {
+      status.done()
+    }
     say('Installed and verified.')
     return 0
   }

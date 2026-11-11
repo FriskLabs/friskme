@@ -21,20 +21,3 @@ export async function runPool<T, R>(
   )
   return results
 }
-
-/** A single-line progress bar on stderr; silent when stderr is not a TTY. */
-export function progressBar(
-  label: string,
-  stream: NodeJS.WriteStream = process.stderr,
-) {
-  const tty = stream.isTTY === true
-  return (completed: number, total: number) => {
-    if (!tty) return
-    const width = 24
-    const filled = total === 0 ? width : Math.round((completed / total) * width)
-    stream.write(
-      `\r  ${label} [${'#'.repeat(filled)}${'.'.repeat(width - filled)}] ${completed}/${total}`,
-    )
-    if (completed === total) stream.write('\n')
-  }
-}

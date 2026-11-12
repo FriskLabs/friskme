@@ -62,6 +62,10 @@ export async function runLabelPass(opts: {
   model: string
   concurrency: number
   onProgress?: (done: number, total: number) => void
+  /** Called before ids the first pass missed are re-sent; returns their progress callback. */
+  onRetry?: (
+    sessions: number,
+  ) => ((done: number, total: number) => void) | undefined
 }): Promise<LabelPassResult> {
   const { hits, todo } = planLabels(opts.jobs, opts.cache, opts.model)
   const labels = new Map(hits)
@@ -116,7 +120,14 @@ export async function runLabelPass(opts: {
     const size = Math.max(5, Math.ceil(LABEL_BATCH_SIZE / 3))
     for (let i = 0; i < failedFirst.length; i += size)
       retryBatches.push(failedFirst.slice(i, i + size))
-    unlabeled = (await runPool(retryBatches, opts.concurrency, runBatch)).flat()
+    unlabeled = (
+      await runPool(
+        retryBatches,
+        opts.concurrency,
+        runBatch,
+        opts.onRetry?.(failedFirst.length),
+      )
+    ).flat()
   }
   return {
     labels,

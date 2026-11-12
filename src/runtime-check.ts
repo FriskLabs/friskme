@@ -9,5 +9,5 @@ export function runtimeProblem(
   const [major = 0, minor = 0] = versions.node.split('.').map(Number)
   const [minMajor, minMinor] = MIN_NODE
   if (major > minMajor || (major === minMajor && minor >= minMinor)) return null
-  return `frisk needs Node ${minMajor}.${minMinor} or newer; this is Node ${versions.node}.`
+  return `friskme needs Node ${minMajor}.${minMinor} or newer; this is Node ${versions.node}.`
 }

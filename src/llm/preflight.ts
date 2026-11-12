@@ -36,7 +36,7 @@ export async function checkAnalyzer(
   if (!binary) {
     return {
       ok: false,
-      message: `The \`${info.binary}\` CLI was not found on your PATH. frisk uses it to label sessions.\n${NO_LLM_HINT}`,
+      message: `The \`${info.binary}\` CLI was not found on your PATH. friskme uses it to label sessions.\n${NO_LLM_HINT}`,
     }
   }
   // Windows runs .cmd/.bat shims only through cmd.exe, which would mangle the
@@ -44,7 +44,7 @@ export async function checkAnalyzer(
   if (/\.(cmd|bat)$/i.test(binary)) {
     return {
       ok: false,
-      message: `Found ${binary}, a script shim; frisk needs the native \`${info.binary}\` executable (.exe) on Windows.\n${NO_LLM_HINT}`,
+      message: `Found ${binary}, a script shim; friskme needs the native \`${info.binary}\` executable (.exe) on Windows.\n${NO_LLM_HINT}`,
     }
   }
   const statusArgs =
@@ -98,6 +98,6 @@ export async function preflight(
   if (codex.ok) return codex
   return {
     ok: false,
-    message: `Neither \`claude\` nor \`codex\` is installed and logged in; frisk uses one of them to label sessions.\n${claude.message}`,
+    message: `Neither \`claude\` nor \`codex\` is installed and logged in; friskme uses one of them to label sessions.\n${claude.message}`,
   }
 }

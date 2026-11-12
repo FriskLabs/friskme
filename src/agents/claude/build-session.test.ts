@@ -187,6 +187,18 @@ describe('loadSessions', () => {
     expect(stats.skippedOutsideWindow).toBeGreaterThanOrEqual(1)
   })
 
+  test('reports progress once per file, starting at zero', async () => {
+    const calls: [string, number, number][] = []
+    await loadSessions(at(ROOT), {
+      sinceMs: 0,
+      onProgress: (agent, done, total) => calls.push([agent, done, total]),
+    })
+    expect(calls.map(([, done]) => done)).toEqual([0, 1, 2, 3, 4])
+    expect(
+      calls.every(([agent, , total]) => agent === 'Claude Code' && total === 4),
+    ).toBe(true)
+  })
+
   test('returns nothing for a missing root', async () => {
     const { sessions, stats } = await loadSessions(
       at(join(ROOT, 'does-not-exist')),

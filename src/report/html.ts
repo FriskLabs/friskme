@@ -266,7 +266,7 @@ function table(headers: [string, 'l' | 'r'][], rows: string[][]): string {
 export function renderHtml(r: Report): string {
   const o = r.overview
   const period = `${formatDate(r.window.from)} → ${formatDate(r.window.to)}`
-  const command = `frisk scan --since ${r.window.since}${r.llm.enabled ? '' : ' --no-llm'}`
+  const command = `friskme scan --since ${r.window.since}${r.llm.enabled ? '' : ' --no-llm'}`
   const skipped = r.source
   const ignored = Object.entries(skipped.ignoredLineTypes).sort(
     (a, b) => b[1] - a[1],
@@ -402,7 +402,7 @@ footer{margin-top:56px;padding-top:16px;border-top:1px solid var(--rule);color:v
   <p class="cmd">$ <b>${esc(command)}</b></p>
   ${r.sensitive.revealed ? '<p class="banner" role="alert">This report contains unmasked secrets and personal data (--reveal). Keep it on this machine; do not share or commit it.</p>' : ''}
   <h1>What your ${esc(agentsTitle(r))} sessions were for</h1>
-  ${comment(`${o.sessions} sessions in ${o.projects.length} projects, ${period}. Generated on this machine by frisk ${r.friskVersion}.`)}
+  ${comment(`${o.sessions} sessions in ${o.projects.length} projects, ${period}. Generated on this machine by friskme ${r.friskVersion}.`)}
   <nav aria-label="Sections"><a href="#overview">overview</a><a href="#intents">intents</a><a href="#workflows">workflows</a><a href="#waste">waste</a><a href="#sensitive">sensitive</a><a href="#method">method</a></nav>
 </header>
 
@@ -526,18 +526,18 @@ ${sensitiveSection(r)}
 <h2 id="method">Method and caveats</h2>
 <ul class="method">
 <li><b>read</b> ${skipped.files} session files and ${skipped.subagentFiles} subagent files under ${skipped.roots.map((x) => `<code>${esc(x.path)}</code> (${esc(agentName(x.agent))}${skipped.byAgent[x.agent] ? `, ${skipped.byAgent[x.agent]!.files} files` : ''})`).join(', ') || 'no agent folders'}, read-only. Nothing there was changed.</li>
-<li><b>kept</b> ${o.sessions} sessions active since ${esc(r.window.since)}. Skipped ${skipped.skippedOutsideWindow} outside the window, ${skipped.skippedNoPrompt} with no typed prompt, ${skipped.skippedFriskSelf} created by frisk${skipped.filteredByProject ? `, ${skipped.filteredByProject} outside --project` : ''}.</li>
+<li><b>kept</b> ${o.sessions} sessions active since ${esc(r.window.since)}. Skipped ${skipped.skippedOutsideWindow} outside the window, ${skipped.skippedNoPrompt} with no typed prompt, ${skipped.skippedFriskSelf} created by friskme${skipped.filteredByProject ? `, ${skipped.filteredByProject} outside --project` : ''}.</li>
 <li><b>lines</b> ${skipped.malformedLines} malformed lines skipped. Ignored by design: ${ignored.map(([k, v]) => `${esc(k)} (${v})`).join(', ') || 'none'}.${unknown.length ? ` Unknown line types, ignored: ${unknown.map(([k, v]) => `${esc(k)} (${v})`).join(', ')}.` : ''}</li>
 <li><b>sent</b> ${
     r.llm.enabled
-      ? `${r.llm.calls} <code>${esc(analyzerInfo(r).callName)}</code> ${r.llm.calls === 1 ? 'call' : 'calls'} to ${esc(r.llm.model)} under your own ${esc(analyzerInfo(r).loginName)} login, ${r.llm.failedCalls} failed. Labeling sent each session's first prompt (≤600 chars), up to 5 follow-ups (≤200 chars each), the project folder name and folded tool names. Grouping sent only labels and counts. Skill drafting sent 3–5 of the same cards. Secrets were redacted first${redactions.length ? ` (${redactions.map(([k, v]) => `${esc(k)}: ${v}`).join(', ')})` : ', none found'}. ${r.llm.analyzer === 'codex' ? 'Calls ran ephemeral, without your Codex config, MCP servers, AGENTS.md, web search or the shell tool, in a read-only sandbox and an empty folder.' : 'Calls ran with no tools, no session persistence and safe mode.'} ${r.llm.labelsFromCache} labels came from the local cache. ${r.llm.costUsd === null ? `${esc(analyzerInfo(r).callName)} does not report cost, so frisk's own calls are not priced.` : `frisk's own calls cost ${formatUsd(r.llm.costUsd)} at list price.`}`
+      ? `${r.llm.calls} <code>${esc(analyzerInfo(r).callName)}</code> ${r.llm.calls === 1 ? 'call' : 'calls'} to ${esc(r.llm.model)} under your own ${esc(analyzerInfo(r).loginName)} login, ${r.llm.failedCalls} failed. Labeling sent each session's first prompt (≤600 chars), up to 5 follow-ups (≤200 chars each), the project folder name and folded tool names. Grouping sent only labels and counts. Skill drafting sent 3–5 of the same cards. Secrets were redacted first${redactions.length ? ` (${redactions.map(([k, v]) => `${esc(k)}: ${v}`).join(', ')})` : ', none found'}. ${r.llm.analyzer === 'codex' ? 'Calls ran ephemeral, without your Codex config, MCP servers, AGENTS.md, web search or the shell tool, in a read-only sandbox and an empty folder.' : 'Calls ran with no tools, no session persistence and safe mode.'} ${r.llm.labelsFromCache} labels came from the local cache. ${r.llm.costUsd === null ? `${esc(analyzerInfo(r).callName)} does not report cost, so friskme's own calls are not priced.` : `friskme's own calls cost ${formatUsd(r.llm.costUsd)} at list price.`}`
       : 'nothing (--no-llm).'
   }</li>
 ${r.llm.groupingFellBack ? '<li><b>fallback</b> grouping failed twice, so intents are work categories.</li>' : ''}
 ${r.llm.labelsLeftUngrouped ? `<li><b>ungrouped</b> ${r.llm.labelsLeftUngrouped} labels the grouping step left out were put in "Other work".</li>` : ''}
 ${r.llm.skillDraftsFailed ? `<li><b>skills</b> ${r.llm.skillDraftsFailed} drafts failed and were not written.</li>` : ''}
-<li><b>rates</b> ${esc(r.rates.basis)}, bundled with frisk. No pricing was fetched.</li>
-${r.sensitive.model ? `<li><b>pii model</b> ${esc(r.sensitive.model.name)} at revision ${esc(r.sensitive.model.revision.slice(0, 12))}, downloaded once from huggingface.co (model) and registry.npmjs.org (ONNX Runtime), every file checked against a SHA-256 pinned in frisk. It ran on this machine; no text was sent anywhere.</li>` : ''}
+<li><b>rates</b> ${esc(r.rates.basis)}, bundled with friskme. No pricing was fetched.</li>
+${r.sensitive.model ? `<li><b>pii model</b> ${esc(r.sensitive.model.name)} at revision ${esc(r.sensitive.model.revision.slice(0, 12))}, downloaded once from huggingface.co (model) and registry.npmjs.org (ONNX Runtime), every file checked against a SHA-256 pinned in friskme. It ran on this machine; no text was sent anywhere.</li>` : ''}
 <li><b>history</b> Claude Code deletes transcripts older than <code>cleanupPeriodDays</code> (30 by default), so this covers about a month at most.</li>
 </ul>
 

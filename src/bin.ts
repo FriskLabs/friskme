@@ -18,7 +18,7 @@ main(process.argv.slice(2)).then(
   (code) => process.exit(code),
   (err) => {
     process.stderr.write(
-      `frisk failed: ${err instanceof Error ? err.stack : String(err)}\n`,
+      `friskme failed: ${err instanceof Error ? err.stack : String(err)}\n`,
     )
     process.exit(1)
   },

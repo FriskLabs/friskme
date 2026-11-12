@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline/promises'
-import { progressBar } from '../../llm/pool.ts'
+import { createStatus } from '../../progress.ts'
 import {
   downloadPlan,
   ensureModel,
@@ -71,7 +71,7 @@ export async function modelsCommand(
       say(
         bad.length === 0
           ? '  status    installed, all hashes verified'
-          : `  status    corrupt: ${bad.join(', ')} (run frisk models remove, then download)`,
+          : `  status    corrupt: ${bad.join(', ')} (run friskme models remove, then download)`,
       )
     } else {
       say(`  status    not installed (${mb(plan.bytes)} to download)`)
@@ -100,12 +100,18 @@ export async function modelsCommand(
       rl.close()
       if (!/^y(es)?$/i.test(answer.trim())) return 0
     }
-    await ensureModel(paths, platform, {
-      progress: (label) => progressBar(label),
-    })
+    const status = createStatus()
+    try {
+      await ensureModel(paths, platform, {
+        progress: (label) =>
+          status.bar(`Downloading ${label}`, { format: mb, unit: '' }),
+      })
+    } finally {
+      status.done()
+    }
     say('Installed and verified.')
     return 0
   }
-  process.stderr.write('Usage: frisk models list|download|remove\n')
+  process.stderr.write('Usage: friskme models list|download|remove\n')
   return 2
 }

@@ -10,12 +10,12 @@ import { loadSalt } from './sensitive/mask.ts'
 import { modelsCommand } from './sensitive/model/models-command.ts'
 import { runNerWorker } from './sensitive/model/ner.ts'
 
-export const HELP = `frisk ${FRISK_VERSION}: what your coding-agent sessions were actually for
+export const HELP = `friskme ${FRISK_VERSION}: what your coding-agent sessions were actually for
 
 Usage:
-  frisk [scan] [options]     Analyze recent sessions and write a report (default)
-  frisk cache clear          Delete frisk's local cache (~/.frisk/cache)
-  frisk models list|download|remove
+  friskme [scan] [options]   Analyze recent sessions and write a report (default)
+  friskme cache clear        Delete friskme's local cache (~/.frisk/cache)
+  friskme models list|download|remove
                              Manage the optional PII model (~/.frisk/models)
 
 Options:
@@ -115,7 +115,7 @@ export async function main(argv: string[]): Promise<number> {
   }
   if (command === 'cache') {
     if (positionals[1] !== 'clear') {
-      process.stderr.write('Usage: frisk cache clear\n')
+      process.stderr.write('Usage: friskme cache clear\n')
       return 2
     }
     const root = cacheRoot()

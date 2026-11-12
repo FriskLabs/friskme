@@ -7,6 +7,7 @@ import {
   type Session,
   type TokenTotals,
 } from '../types.ts'
+import { resolveProject } from './project.ts'
 
 /** One block of transcript text, for the sensitive-data scan. */
 export type TextVisit = {
@@ -93,6 +94,11 @@ export function finishSession(s: Session): ParseOutcome {
   if (!s.project) {
     s.project = '(unknown)'
     s.projectLabel = '(unknown)'
+  } else {
+    // Adapters set project to the cwd; count worktrees under their repo.
+    const { root, label } = resolveProject(s.project)
+    s.project = root
+    s.projectLabel = label
   }
   return { status: 'ok', session: s }
 }

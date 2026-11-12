@@ -22,7 +22,7 @@ Options:
   --agent <list>               Agents to read: claude, codex, or both comma-separated
                                (default: every agent whose session folder exists)
   --since <30d|4w|YYYY-MM-DD>  Only sessions active since then (default 30d)
-  --project <substring>        Only sessions whose working directory contains this
+  --project <substring>        Only sessions whose project path contains this
   --max-sessions <n>           Analyze at most the n most recent sessions
   --analyzer <claude|codex>    CLI that labels sessions: claude -p or codex exec
                                (default: claude if logged in, else codex)

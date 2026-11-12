@@ -14,12 +14,14 @@ export type BarOptions = {
   unit?: string
   /** Formats the counts, e.g. bytes as MB. */
   format?: (n: number) => string
+  /** Keep the current phase's timer (a retry of the same step) instead of restarting it. */
+  continues?: boolean
 }
 
 export interface Status {
   /** Starts a new phase: replaces the live line and restarts its timer. */
   phase(text: string): void
-  /** Starts a phase with a progress bar, drawn right away. */
+  /** Starts a phase with a progress bar, drawn right away. With `continues`, its timer carries on from the current phase. */
   bar(label: string, opts?: BarOptions): Progress
   /** A detail after the counts (the item in progress); null clears it. */
   note(detail: string | null): void
@@ -169,6 +171,7 @@ export function createStatus(opts: StatusOptions = {}): Status {
     },
     bar(label, barOpts = {}) {
       const p = newPhase(label, barOpts)
+      if (barOpts.continues && phase) p.started = phase.started
       start(p)
       return (done, total) => {
         if (phase !== p) return

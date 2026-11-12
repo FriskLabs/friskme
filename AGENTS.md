@@ -30,7 +30,7 @@ The pipeline runs in this order, all under `src/`:
 - `discover.ts`: `loadSessions`, which reads every source and applies the window, `--project` and `--max-sessions` filters
 - `parse/`: helpers shared by adapters (JSONL reading, `emptySession`/`finishSession`, step keys)
 - `card/`: per-session cards for the model (`build-card.ts`) and redaction (`scrub-secrets.ts`)
-- `llm/`: label pass → group pass → skill pass, against the `ModelRunner` interface (`runner.ts`). `claude-runner.ts` spawns `claude -p`, `codex-runner.ts` spawns `codex exec`, `preflight.ts` picks the analyzer, `pool.ts` limits concurrency and `prompts.ts` holds the prompts, schemas and validators.
+- `llm/`: label pass → group pass → skill pass, against the `ModelRunner` interface (`runner.ts`). `claude-runner.ts` spawns `claude -p`, `codex-runner.ts` spawns `codex exec`, `pi-runner.ts` spawns `pi -p`, `preflight.ts` picks the analyzer, `pool.ts` limits concurrency and `prompts.ts` holds the prompts, schemas and validators.
 - `waste/`: deterministic waste detectors, plus `rate-table.ts` for dollar pricing
 - `sensitive/`: secret and PII rules, validators, masking and the summary. `model/` holds the opt-in NER model (download, manifest, worker).
 - `report/`: aggregation, terminal output, HTML, JSON and skill files
@@ -47,8 +47,8 @@ Release tooling sits outside `src/`:
 ## Invariants (do not break these)
 
 - **Transcripts are read-only.** Never write, move or delete anything under the projects directory.
-- **No network calls of frisk's own.** The only exceptions are the analyzer (`claude -p` or `codex exec`) and the opt-in `--pii-model` download. Every downloaded file is pinned by SHA-256 in `sensitive/model/manifest.ts`.
-- **The analyzer stays isolated.** Keep the flags in `llm/claude-runner.ts`: no tools, no MCP, no session persistence, an empty temp cwd and the prompt on stdin. Don't add `--bare`, which breaks subscription login. Keep the flags in `llm/codex-runner.ts`: `--ephemeral`, `--ignore-user-config`, `--ignore-rules`, read-only sandbox, no approvals, web search/shell/multi-agent/apps off, no AGENTS.md, an empty temp cwd and the prompt on stdin. Every prompt starts with `FRISK_SENTINEL` (`constants.ts`), and every adapter drops sessions that start with it, so frisk can skip its own sessions.
+- **No network calls of frisk's own.** The only exceptions are the analyzer (`claude -p`, `codex exec` or `pi -p`) and the opt-in `--pii-model` download. Every downloaded file is pinned by SHA-256 in `sensitive/model/manifest.ts`.
+- **The analyzer stays isolated.** Keep the flags in `llm/claude-runner.ts`: no tools, no MCP, no session persistence, an empty temp cwd and the prompt on stdin. Don't add `--bare`, which breaks subscription login. Keep the flags in `llm/codex-runner.ts`: `--ephemeral`, `--ignore-user-config`, `--ignore-rules`, read-only sandbox, no approvals, web search/shell/multi-agent/apps off, no AGENTS.md, an empty temp cwd and the prompt on stdin. Keep the flags in `llm/pi-runner.ts`: `--no-session`, `--no-tools`, no extensions, MCP, skills, prompt templates, themes or context files, `--no-approve`, `--offline` with `PI_TELEMETRY=0`, an empty temp cwd and the prompt on stdin. pi is never picked automatically; it runs only with `--analyzer pi`. Every prompt starts with `FRISK_SENTINEL` (`constants.ts`), and every adapter drops sessions that start with it, so frisk can skip its own sessions.
 - **Cards carry only what README "What is sent where" lists.** That means no tool output, file contents, command lines, session ids or full paths. If you change what a card contains, update that README section too.
 - **Redact before you cache or send.** Everything the sensitive scan finds is masked in a card before the card is cached or sent. A raw sensitive value never reaches the cache, the terminal or the report, unless the user passes `--reveal`. With `--reveal`, report files are written with mode 0600.
 - **The model never computes numbers.** Counts, shares, tokens and dollars all come from code.
@@ -61,7 +61,7 @@ Release tooling sits outside `src/`:
 - Use `bun:test`, with `*.test.ts` files next to the code they test.
 - Use only the synthetic fixtures in `src/__fixtures__/projects/` (Claude Code), `src/__fixtures__/codex/sessions/` (Codex) and `src/__fixtures__/pi/sessions/` (Pi). Never use or commit real transcripts or rollouts. Compressed (`.zst`) variants are made at test time with `Bun.zstdCompressSync`.
 - Never commit a string shaped like a secret. Build fake secrets at runtime with `src/sensitive/test-secrets.ts`, so GitHub push protection doesn't block the push.
-- Tests must never call the real `claude` or `codex` CLI or the network. Inject a fake `SpawnFn` instead (see `src/llm/llm.test.ts`).
+- Tests must never call the real `claude`, `codex` or `pi` CLI or the network. Inject a fake `SpawnFn` instead (see `src/llm/llm.test.ts`).
 
 ## Style
 

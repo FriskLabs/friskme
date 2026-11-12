@@ -1,6 +1,6 @@
 /**
  * What the label, group and skill passes need from a model: one structured
- * call at a time. `claude -p` and `codex exec` each implement it.
+ * call at a time. `claude -p`, `codex exec` and `pi -p` each implement it.
  */
 import { spawn } from 'node:child_process'
 
@@ -8,7 +8,8 @@ export type SpawnResult = { exitCode: number; stdout: string; stderr: string }
 export type SpawnFn = (
   args: string[],
   stdin: string,
-  opts: { cwd: string },
+  /** `env` entries are added to the inherited environment. */
+  opts: { cwd: string; env?: Record<string, string> },
 ) => Promise<SpawnResult>
 
 export const defaultSpawn: SpawnFn = (args, stdin, opts) =>
@@ -18,6 +19,7 @@ export const defaultSpawn: SpawnFn = (args, stdin, opts) =>
     // No shell: the arguments carry JSON and multi-line text verbatim.
     const proc = spawn(cmd, rest, {
       cwd: opts.cwd,
+      env: opts.env ? { ...process.env, ...opts.env } : process.env,
       stdio: 'pipe',
       windowsHide: true,
     })
@@ -47,7 +49,7 @@ export type Validator<T> = (
   value: unknown,
 ) => { ok: true; value: T } | { ok: false; reason: string }
 
-export type AnalyzerId = 'claude' | 'codex'
+export type AnalyzerId = 'claude' | 'codex' | 'pi'
 
 export interface ModelRunner {
   readonly analyzer: AnalyzerId
@@ -94,12 +96,20 @@ export const ANALYZERS: Record<AnalyzerId, AnalyzerInfo> = {
     defaultModel: null,
     loginHint: 'codex login',
   },
+  pi: {
+    id: 'pi',
+    binary: 'pi',
+    callName: 'pi -p',
+    loginName: 'pi provider',
+    defaultModel: null,
+    loginHint: 'pi auth login <provider>',
+  },
 }
 
 export function parseAnalyzer(value: string): AnalyzerId {
   const v = value.trim().toLowerCase()
-  if (v === 'claude' || v === 'codex') return v
-  throw new Error(`--analyzer: expected claude or codex, got "${value}"`)
+  if (v === 'claude' || v === 'codex' || v === 'pi') return v
+  throw new Error(`--analyzer: expected claude, codex or pi, got "${value}"`)
 }
 
 /** The model as shown to the user and as keyed in the cache. */

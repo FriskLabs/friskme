@@ -24,10 +24,11 @@ Options:
   --since <30d|4w|YYYY-MM-DD>  Only sessions active since then (default 30d)
   --project <substring>        Only sessions whose project path contains this
   --max-sessions <n>           Analyze at most the n most recent sessions
-  --analyzer <claude|codex>    CLI that labels sessions: claude -p or codex exec
-                               (default: claude if logged in, else codex)
+  --analyzer <claude|codex|pi> CLI that labels sessions: claude -p, codex exec
+                               or pi -p (default: claude if logged in, else
+                               codex; pi only when asked)
   --model <name>               Model for the analyzer (default: haiku for claude,
-                               Codex's own default for codex)
+                               Codex's own default for codex, pi's for pi)
   --no-llm                     Skip all model calls; deterministic sections only
   --out <dir>                  Output directory (default ./frisk-report)
   --json                       Print report.json to stdout (summary goes to stderr)

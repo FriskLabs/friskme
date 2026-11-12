@@ -17,6 +17,7 @@ import {
   runLabelPass,
   type SessionLabel,
 } from './llm/label-pass.ts'
+import { PiRunner } from './llm/pi-runner.ts'
 import { runPool } from './llm/pool.ts'
 import { preflight } from './llm/preflight.ts'
 import { type GroupedIntent, SYSTEM_PROMPT } from './llm/prompts.ts'
@@ -68,7 +69,7 @@ export type ScanOptions = {
   maxSessions?: number
   /** Which CLI labels sessions; by default the first one logged in (claude, then codex). */
   analyzer?: AnalyzerId
-  /** Model for the analyzer; by default the analyzer's own (`haiku` / Codex's default). */
+  /** Model for the analyzer; by default the analyzer's own (`haiku` / Codex's / pi's default). */
   model?: string
   noLlm: boolean
   outDir: string
@@ -132,6 +133,7 @@ async function runScan(opts: ScanOptions, status: Status): Promise<ScanResult> {
       analyzer: opts.analyzer,
       which: opts.which,
       spawn: opts.spawn,
+      model: opts.model ?? null,
     })
     if (!pf.ok) {
       log(pf.message)
@@ -331,6 +333,13 @@ async function runScan(opts: ScanOptions, status: Status): Promise<ScanResult> {
     })
   } else if (binary && analyzerId === 'codex') {
     runner = new CodexRunner({
+      binary,
+      model,
+      systemPrompt: SYSTEM_PROMPT,
+      spawn: opts.spawn,
+    })
+  } else if (binary && analyzerId === 'pi') {
+    runner = new PiRunner({
       binary,
       model,
       systemPrompt: SYSTEM_PROMPT,

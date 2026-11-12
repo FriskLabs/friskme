@@ -19,7 +19,7 @@ npx friskme
 
 To install the `friskme` command, run `npm i -g friskme`.
 
-The npm package is one JavaScript file of about 1 MB, with no dependencies and nothing to compile. npm downloads it at install time; friskme itself downloads nothing. It's tested on macOS and Linux. It should also run on Windows and on Alpine and other musl-based Linux distributions, but those aren't tested. On Windows, the analyzer must be a native `claude.exe` or `codex.exe`, not an npm `.cmd` shim. `--pii-model` works only on macOS (Apple silicon or Intel) and Linux x64.
+The npm package is one JavaScript file of about 1 MB, with no dependencies and nothing to compile. npm downloads it at install time; friskme itself downloads nothing. It's tested on macOS and Linux. It should also run on Windows and on Alpine and other musl-based Linux distributions, but those aren't tested. On Windows, the analyzer must be a native `claude.exe`, `codex.exe` or `pi.exe`, not an npm `.cmd` shim. `--pii-model` works only on macOS (Apple silicon or Intel) and Linux x64.
 
 If you don't have Node, download a standalone binary (about 70–90 MB) from [GitHub Releases](https://github.com/FriskLabs/frisk-cli/releases) and put it on your `PATH`. Each release includes a `SHA256SUMS` file.
 
@@ -36,7 +36,7 @@ chmod +x frisk-darwin-arm64 && mv frisk-darwin-arm64 /usr/local/bin/friskme
 
 To build from this repo, run `bun run build:release`. That writes all four binaries to `dist/`; `build` compiles only your own platform, and `build:npm` writes the Node bundle to `dist/frisk.js`.
 
-Naming intents and drafting skills needs one model CLI, logged in: `claude` (Claude Code) or `codex`. friskme uses whichever you have, Claude first; `--analyzer` picks one. Without either, run `friskme --no-llm` to get the overview and waste sections only.
+Naming intents and drafting skills needs one model CLI, logged in: `claude` (Claude Code), `codex` or `pi`. friskme uses `claude` or `codex`, whichever you have, Claude first; `--analyzer` picks one. `pi` is used only with `--analyzer pi`, because its default model is whatever you chat with, which can cost far more per call than a small labeling model. Without either, run `friskme --no-llm` to get the overview and waste sections only.
 
 ## Use
 
@@ -45,6 +45,7 @@ friskme                       # last 30 days, every agent found; asks before any
 friskme --agent codex         # only Codex sessions
 friskme --agent claude,pi     # only Claude Code and Pi sessions
 friskme --analyzer codex      # label with codex exec instead of claude -p
+friskme --analyzer pi --model claude-haiku-5-5  # label with pi -p
 friskme --yes --since 2w      # no prompt, last two weeks
 friskme --project my-repo     # only sessions whose project path contains "my-repo"
 friskme --no-llm              # deterministic sections only, nothing sent anywhere
@@ -54,9 +55,9 @@ friskme --json > report.json  # machine-readable; the summary goes to stderr
 Other options:
 
 - `--agent claude,codex,pi`: which agents to read (default: every agent whose session folder exists)
-- `--analyzer claude|codex`: which CLI names intents (default: `claude` if logged in, else `codex`)
+- `--analyzer claude|codex|pi`: which CLI names intents (default: `claude` if logged in, else `codex`; `pi` only when asked)
 - `--max-sessions <n>`
-- `--model <name>`: the analyzer's model (default `haiku` for `claude`; Codex's own default for `codex`)
+- `--model <name>`: the analyzer's model (default `haiku` for `claude`; Codex's own default for `codex`; pi's default model for `pi`, which accepts `provider/id` and a `:<thinking>` suffix)
 - `--out <dir>` (default `./frisk-report`)
 - `--no-sensitive`: skip the secrets and personal-data scan
 - `--pii-model`, `--pii-model-scope prompts|all`: see [Sensitive data](#sensitive-data)
@@ -90,7 +91,7 @@ Claude Code deletes transcripts older than `cleanupPeriodDays` (30 by default), 
 
 ## What is sent where
 
-Unless you pass `--no-llm`, friskme runs one analyzer CLI: `claude -p` (calls go to Anthropic under your own Claude login) or `codex exec` (calls go to OpenAI under your own Codex login). Either analyzer labels sessions from every agent, so with `--analyzer codex` your Claude Code and Pi cards go to OpenAI, and with `claude` your Codex and Pi cards go to Anthropic. Nothing goes anywhere else: no telemetry, and no FriskAI endpoint.
+Unless you pass `--no-llm`, friskme runs one analyzer CLI: `claude -p` (calls go to Anthropic under your own Claude login), `codex exec` (calls go to OpenAI under your own Codex login) or `pi -p` (calls go to the provider of the model pi uses, under your own pi login for that provider). Any analyzer labels sessions from every agent, so with `--analyzer codex` your Claude Code and Pi cards go to OpenAI, and with `claude` your Codex and Pi cards go to Anthropic. Nothing goes anywhere else: no telemetry, and no FriskAI endpoint.
 
 friskme shows you the planned number of calls and asks before making any. It makes three kinds of call:
 
@@ -139,6 +140,26 @@ codex exec --ephemeral --ignore-user-config --ignore-rules --skip-git-repo-check
 - **No customizations:** your `config.toml` (MCP servers, plugins, profiles), execpolicy rules and AGENTS.md are not loaded. Your login still is.
 - `codex exec` has no system-prompt flag, so friskme's instructions go at the top of the prompt on stdin. The schema and answer files are written to a separate temp folder and deleted after each call.
 - `codex exec` does not report cost, so the report says friskme's own calls are unpriced.
+
+Every `pi -p` call runs isolated:
+
+```
+PI_TELEMETRY=0 PI_OFFLINE=1 pi --print --mode json --no-session --no-tools \
+  --no-extensions --no-mcp --no-skills --no-prompt-templates --no-themes \
+  --no-context-files --no-approve --offline \
+  --system-prompt <friskme's> --thinking off [--model <name>]
+```
+
+It runs from an empty temp directory, with the prompt on stdin. These flags mean:
+
+- **No sessions left behind:** `--no-session` keeps the session in memory, so nothing lands in the folder friskme reads.
+- **Nothing to act with:** `--no-tools` turns off every built-in, extension and MCP tool.
+- **No customizations:** your extensions, MCP servers, skills, prompt templates and AGENTS.md/CLAUDE.md are not loaded, and trust-gated project files are ignored. Your provider login still is.
+- **Only the model call goes out:** `--offline` and `PI_TELEMETRY=0` turn off pi's model-catalog refresh, version check and install telemetry.
+- **Thinking off:** labeling doesn't need it. Name a level in the model (`--model sonnet:low`) to keep one.
+- pi has no structured-output flag, so the JSON schema goes at the end of the prompt, and friskme checks every answer against it, retrying once.
+- pi reports what each call cost, so the report prices friskme's own calls.
+- Before the first call, friskme runs `pi auth check` for the provider in `--model` (`provider/id`), or else for the `defaultProvider` in pi's `settings.json`. That one field is all friskme reads from pi's config.
 
 A typical month (about 50 sessions) takes 3 to 7 calls, a few cents on Haiku at API list price.
 

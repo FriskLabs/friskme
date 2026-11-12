@@ -11,8 +11,12 @@ import { parsePiSession } from './build-session.ts'
  */
 export function piSessionsRoot(env: NodeJS.ProcessEnv = process.env): string {
   if (env.PI_CODING_AGENT_SESSION_DIR) return env.PI_CODING_AGENT_SESSION_DIR
-  const base = env.PI_CODING_AGENT_DIR || join(homedir(), '.pi', 'agent')
-  return join(base, 'sessions')
+  return join(piAgentDir(env), 'sessions')
+}
+
+/** pi's config folder: `$PI_CODING_AGENT_DIR`, else `~/.pi/agent`. */
+export function piAgentDir(env: NodeJS.ProcessEnv = process.env): string {
+  return env.PI_CODING_AGENT_DIR || join(homedir(), '.pi', 'agent')
 }
 
 const SESSION_FILE = /\.jsonl$/

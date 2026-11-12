@@ -19,7 +19,7 @@ Usage:
                              Manage the optional PII model (~/.frisk/models)
 
 Options:
-  --agent <list>               Agents to read: claude, codex, or both comma-separated
+  --agent <list>               Agents to read: claude, codex, pi, comma-separated
                                (default: every agent whose session folder exists)
   --since <30d|4w|YYYY-MM-DD>  Only sessions active since then (default 30d)
   --project <substring>        Only sessions whose project path contains this
@@ -45,6 +45,8 @@ Options:
 Reads, read-only:
   Claude Code  ${'$'}CLAUDE_CONFIG_DIR/projects or ~/.claude/projects
   Codex        ${'$'}CODEX_HOME/sessions or ~/.codex/sessions
+  Pi           ${'$'}PI_CODING_AGENT_SESSION_DIR, ${'$'}PI_CODING_AGENT_DIR/sessions
+               or ~/.pi/agent/sessions
 `
 
 /** `30d`, `4w`, `12h` or an ISO date → epoch ms. */

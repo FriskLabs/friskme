@@ -1,5 +1,5 @@
 /** The coding agents frisk reads. Each one has an adapter in `src/agents/`. */
-export const AGENT_IDS = ['claude', 'codex'] as const
+export const AGENT_IDS = ['claude', 'codex', 'pi'] as const
 export type AgentId = (typeof AGENT_IDS)[number]
 
 /**

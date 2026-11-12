@@ -1,6 +1,6 @@
 # friskme
 
-See what your coding-agent sessions were actually for. One command reads your last month of [Claude Code](https://claude.com/claude-code) and [Codex](https://developers.openai.com/codex) sessions on your own machine and writes one report with:
+See what your coding-agent sessions were actually for. One command reads your last month of [Claude Code](https://claude.com/claude-code), [Codex](https://developers.openai.com/codex) and [Pi](https://pi.dev) sessions on your own machine and writes one report with:
 
 - **Intents:** the plain-language jobs behind your sessions and their share of your time.
 - **Repeated workflows:** jobs you keep doing the same way, each with a draft `SKILL.md` you can review and install.
@@ -43,6 +43,7 @@ Naming intents and drafting skills needs one model CLI, logged in: `claude` (Cla
 ```sh
 friskme                       # last 30 days, every agent found; asks before any model call
 friskme --agent codex         # only Codex sessions
+friskme --agent claude,pi     # only Claude Code and Pi sessions
 friskme --analyzer codex      # label with codex exec instead of claude -p
 friskme --yes --since 2w      # no prompt, last two weeks
 friskme --project my-repo     # only sessions whose project path contains "my-repo"
@@ -52,7 +53,7 @@ friskme --json > report.json  # machine-readable; the summary goes to stderr
 
 Other options:
 
-- `--agent claude,codex`: which agents to read (default: every agent whose session folder exists)
+- `--agent claude,codex,pi`: which agents to read (default: every agent whose session folder exists)
 - `--analyzer claude|codex`: which CLI names intents (default: `claude` if logged in, else `codex`)
 - `--max-sessions <n>`
 - `--model <name>`: the analyzer's model (default `haiku` for `claude`; Codex's own default for `codex`)
@@ -69,16 +70,17 @@ Output:
 
 - `frisk-report/report.html`: one self-contained page, with no external assets.
 - `frisk-report/report.json`: the same data.
-- `frisk-report/skills/<intent>/SKILL.md`: draft skills. friskme never installs them. Read one, edit it, then copy it to `~/.claude/skills/<name>/SKILL.md` (Claude Code) or `~/.codex/skills/<name>/SKILL.md` (Codex) if you want it.
+- `frisk-report/skills/<intent>/SKILL.md`: draft skills. friskme never installs them. Read one, edit it, then copy it to `~/.claude/skills/<name>/SKILL.md` (Claude Code) `~/.codex/skills/<name>/SKILL.md` (Codex) or `~/.pi/agent/skills/<name>/SKILL.md` (Pi) if you want it.
 
 ## What is read
 
-| Agent       | Folder                                                   | Files                                                                                                                                                                                                      |
-| ----------- | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Claude Code | `~/.claude/projects/`, or `$CLAUDE_CONFIG_DIR/projects/` | session transcripts (`<project>/<session>.jsonl`) and subagent runs (`<project>/<session>/subagents/*.jsonl`)                                                                                              |
-| Codex       | `~/.codex/sessions/`, or `$CODEX_HOME/sessions/`         | rollouts (`YYYY/MM/DD/rollout-*.jsonl`, or `.jsonl.zst` compressed, which friskme decompresses in memory). A rollout spawned by another session (`spawn_agent`) is counted as that session's subagent run. |
+| Agent       | Folder                                                                                       | Files                                                                                                                                                                                                                              |
+| ----------- | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Claude Code | `~/.claude/projects/`, or `$CLAUDE_CONFIG_DIR/projects/`                                     | session transcripts (`<project>/<session>.jsonl`) and subagent runs (`<project>/<session>/subagents/*.jsonl`)                                                                                                                      |
+| Codex       | `~/.codex/sessions/`, or `$CODEX_HOME/sessions/`                                             | rollouts (`YYYY/MM/DD/rollout-*.jsonl`, or `.jsonl.zst` compressed, which friskme decompresses in memory). A rollout spawned by another session (`spawn_agent`) is counted as that session's subagent run.                         |
+| Pi          | `~/.pi/agent/sessions/`, `$PI_CODING_AGENT_DIR/sessions/`, or `$PI_CODING_AGENT_SESSION_DIR` | session files (`--<folder>--/<time>_<id>.jsonl`). Every branch in a file counts. A session made with `/fork` or `/clone` copies its parent's history; friskme counts only what was added after the copy. Pi has no subagent files. |
 
-By default friskme reads every agent whose folder exists; `--agent` narrows it down. Both agents' sessions go into one report, each tagged with its agent, with sessions, tokens and dollars broken down per agent.
+By default friskme reads every agent whose folder exists; `--agent` narrows it down. Every agent's sessions go into one report, each tagged with its agent, with sessions, tokens and dollars broken down per agent.
 
 The access is strictly read-only: friskme lists directories and reads files, and never writes, moves or deletes anything there.
 
@@ -88,7 +90,7 @@ Claude Code deletes transcripts older than `cleanupPeriodDays` (30 by default), 
 
 ## What is sent where
 
-Unless you pass `--no-llm`, friskme runs one analyzer CLI: `claude -p` (calls go to Anthropic under your own Claude login) or `codex exec` (calls go to OpenAI under your own Codex login). Either analyzer labels sessions from both agents, so with `--analyzer codex` your Claude Code cards go to OpenAI, and with `claude` your Codex cards go to Anthropic. Nothing goes anywhere else: no telemetry, and no FriskAI endpoint.
+Unless you pass `--no-llm`, friskme runs one analyzer CLI: `claude -p` (calls go to Anthropic under your own Claude login) or `codex exec` (calls go to OpenAI under your own Codex login). Either analyzer labels sessions from every agent, so with `--analyzer codex` your Claude Code and Pi cards go to OpenAI, and with `claude` your Codex and Pi cards go to Anthropic. Nothing goes anywhere else: no telemetry, and no FriskAI endpoint.
 
 friskme shows you the planned number of calls and asks before making any. It makes three kinds of call:
 
@@ -96,7 +98,7 @@ friskme shows you the planned number of calls and asks before making any. It mak
    - the first prompt you typed, cut to 600 characters
    - up to 5 follow-ups, 200 characters each
    - the project folder's name (not its path)
-   - tool names with coarse details (`Bash:git`, `Edit:ts`, `exec_command:package_manager`, `apply_patch:ts`, `mcp:github`)
+   - tool names with coarse details (`Bash:git`, `Edit:ts`, `exec_command:package_manager`, `apply_patch:ts`, `bash:git`, `edit:ts`, `mcp:github`)
    - error and interrupt counts
 
    It never includes tool output, file contents, command lines or session ids.
@@ -210,11 +212,12 @@ All counts, shares and costs are computed by friskme, not by the model.
 - **Tokens** count each API response once, including cache reads and writes and subagent runs.
   - **Claude Code** logs one usage record per response, repeated on each line of that response; friskme keeps one per `message.id`.
   - **Codex** logs cumulative `token_count` events, often repeated unchanged; friskme counts the per-response `last_token_usage` only when the cumulative total changes. Newer Codex builds also log `token_usage_record` per `response_id`; when a rollout has those, friskme uses them instead. Codex counts cached tokens inside `input_tokens` (the OpenAI convention), so friskme splits them out: input is `input_tokens − cached_input_tokens − cache_write_input_tokens`, cached tokens are cache reads, and reasoning tokens are already inside output.
+  - **Pi** logs usage on each assistant message, already split the Anthropic way (input excludes cache reads and writes) for every provider; friskme keeps one per `responseId`. `cacheWrite1h` is the 1-hour part of `cacheWrite` and the rest is priced as a 5-minute write. friskme also counts `usage` entries (cache warming), and the usage logged on compactions, branch summaries and tool results. A model id with a provider prefix (`anthropic/claude-…`) is priced by the part after the slash. Pi's own `cost` field is not used.
 - **Dollars** are labeled _API list-price equivalent_, using a rate table bundled with friskme and dated in the report: Anthropic's for Claude models and OpenAI's (standard tier, short context) for GPT models. Codex-specific models OpenAI no longer lists (`gpt-5-codex`, `gpt-5.1-codex`, `gpt-5.1-codex-max`, `gpt-5.2-codex`) are priced as the base model they shipped with. Models without a rate are named and left out of dollar totals. Most people are on a subscription and do not pay this.
 - **Waste detection** is deterministic:
   - A _loop_ is a tool pattern repeated 3+ times in a row where at least 2 iterations, and at least half of them, failed.
-  - _Repeated commands_ are the same shell command (`Bash` in Claude Code; `exec_command`, `shell` and `shell_command` in Codex) 3+ times in a session. `sleep` polling is excluded.
-  - An _error streak_ is 3+ failed tool calls in a row. A Codex tool call failed when its output reports a non-zero exit code.
+  - _Repeated commands_ are the same shell command (`Bash` in Claude Code; `exec_command`, `shell` and `shell_command` in Codex; `bash` in Pi) 3+ times in a session. `sleep` polling is excluded.
+  - An _error streak_ is 3+ failed tool calls in a row. A Codex tool call failed when its output reports a non-zero exit code; a Pi tool call failed when its result has `isError`.
   - An _interrupted ending_ is a session that ended right after you interrupted the agent.
 - **Projects** are the repo a session ran in. A git worktree counts under its main repo: friskme follows the worktree's `.git` file, or, if the worktree is gone, recognizes `<repo>/.claude/worktrees/<name>`, `<repo>/.worktrees/<name>` and `superpowers/worktrees/<repo>/<name>`. Any other folder is its own project.
 - **A repeated workflow** is 4+ sessions in one intent whose tool mix has cosine similarity ≥ 0.8 with the most typical one.

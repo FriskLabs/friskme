@@ -18,12 +18,13 @@ zstd -q --rm "$first"
 
 CLAUDE_CONFIG_DIR="$repo/src/__fixtures__" \
   CODEX_HOME="$work/codex" \
+  PI_CODING_AGENT_DIR="$repo/src/__fixtures__/pi" \
   FRISK_CACHE_DIR="$work/cache" \
   "$@" --no-llm --yes --since 2020-01-01 --out "$work/report"
 
 sessions="$(node -p "require('$work/report/report.json').overview.sessions")"
-if [ "$sessions" != 5 ]; then
-  echo "smoke: expected 5 sessions in report.json, got $sessions" >&2
+if [ "$sessions" != 6 ]; then
+  echo "smoke: expected 6 sessions in report.json, got $sessions" >&2
   exit 1
 fi
 test -s "$work/report/report.html"

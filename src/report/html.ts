@@ -552,9 +552,10 @@ function analyzerInfo(r: Report) {
   return ANALYZERS[r.llm.analyzer ?? 'claude']
 }
 
-/** `Claude Code`, `Codex`, or `Claude Code and Codex`: whichever agents the report covers. */
+/** `Codex`, `Claude Code and Codex`, `Claude Code, Codex and Pi`: whichever agents the report covers. */
 function agentsTitle(r: Report): string {
   const names = r.overview.agents.map((a) => a.name)
   if (names.length === 0) return 'coding-agent'
-  return names.join(' and ')
+  if (names.length === 1) return names[0]!
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
 }

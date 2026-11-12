@@ -384,8 +384,10 @@ async function runScan(opts: ScanOptions, status: Status): Promise<ScanResult> {
         concurrency: CONCURRENCY,
         onProgress: labelProgress(),
         onRetry: (n) => {
+          // Same step: the timer and the final summary cover both attempts.
           const tick = status.bar(`Retrying ${n} sessions the model skipped`, {
             unit: 'batches',
+            continues: true,
           })
           return inFlight(tick)
         },

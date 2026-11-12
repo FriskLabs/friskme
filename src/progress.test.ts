@@ -111,6 +111,26 @@ describe('createStatus on a terminal', () => {
     expect(writes.length).toBe(n)
   })
 
+  test('a continuing bar keeps the phase timer through to done', () => {
+    const { status, text, writes, advance } = setup()
+    status.bar('Labeling', { total: 4, unit: 'batches' })
+    advance(30_000)
+    status.bar('Retrying 3 sessions', { unit: 'batches', continues: true })
+    expect(liveLine(writes)).toContain('Retrying 3 sessions')
+    expect(liveLine(writes)).toContain('0:30')
+    advance(12_000)
+    status.done('Labeled 10 sessions')
+    expect(text().endsWith('✓ Labeled 10 sessions · 0:42\n')).toBe(true)
+  })
+
+  test('a new bar without continues restarts the timer', () => {
+    const { status, writes, advance } = setup()
+    status.phase('Reading')
+    advance(30_000)
+    status.bar('Labeling', { total: 2 })
+    expect(liveLine(writes)).toContain('0:00')
+  })
+
   test('ticks from a finished phase are ignored', () => {
     const { status, writes } = setup()
     const tick = status.bar('Old', { total: 2 })

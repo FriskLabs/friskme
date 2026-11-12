@@ -530,7 +530,7 @@ ${sensitiveSection(r)}
 <li><b>lines</b> ${skipped.malformedLines} malformed lines skipped. Ignored by design: ${ignored.map(([k, v]) => `${esc(k)} (${v})`).join(', ') || 'none'}.${unknown.length ? ` Unknown line types, ignored: ${unknown.map(([k, v]) => `${esc(k)} (${v})`).join(', ')}.` : ''}</li>
 <li><b>sent</b> ${
     r.llm.enabled
-      ? `${r.llm.calls} <code>${esc(analyzerInfo(r).callName)}</code> ${r.llm.calls === 1 ? 'call' : 'calls'} to ${esc(r.llm.model)} under your own ${esc(analyzerInfo(r).loginName)} login, ${r.llm.failedCalls} failed. Labeling sent each session's first prompt (≤600 chars), up to 5 follow-ups (≤200 chars each), the project folder name and folded tool names. Grouping sent only labels and counts. Skill drafting sent 3–5 of the same cards. Secrets were redacted first${redactions.length ? ` (${redactions.map(([k, v]) => `${esc(k)}: ${v}`).join(', ')})` : ', none found'}. ${r.llm.analyzer === 'codex' ? 'Calls ran ephemeral, without your Codex config, MCP servers, AGENTS.md, web search or the shell tool, in a read-only sandbox and an empty folder.' : 'Calls ran with no tools, no session persistence and safe mode.'} ${r.llm.labelsFromCache} labels came from the local cache. ${r.llm.costUsd === null ? `${esc(analyzerInfo(r).callName)} does not report cost, so friskme's own calls are not priced.` : `friskme's own calls cost ${formatUsd(r.llm.costUsd)} at list price.`}`
+      ? `${r.llm.calls} <code>${esc(analyzerInfo(r).callName)}</code> ${r.llm.calls === 1 ? 'call' : 'calls'} to ${esc(r.llm.model)} under your own ${esc(analyzerInfo(r).loginName)} login, ${r.llm.failedCalls} failed. Labeling sent each session's first prompt (≤600 chars), up to 5 follow-ups (≤200 chars each), the project folder name and folded tool names. Grouping sent only labels and counts. Skill drafting sent 3–5 of the same cards. Secrets were redacted first${redactions.length ? ` (${redactions.map(([k, v]) => `${esc(k)}: ${v}`).join(', ')})` : ', none found'}. ${r.llm.analyzer === 'codex' ? 'Calls ran ephemeral, without your Codex config, MCP servers, AGENTS.md, web search or the shell tool, in a read-only sandbox and an empty folder.' : r.llm.analyzer === 'pi' ? 'Calls ran with no tools and no saved session, without your pi extensions, MCP servers, skills or AGENTS.md, with pi telemetry and update checks off, in an empty folder.' : 'Calls ran with no tools, no session persistence and safe mode.'} ${r.llm.labelsFromCache} labels came from the local cache. ${r.llm.costUsd === null ? `${esc(analyzerInfo(r).callName)} does not report cost, so friskme's own calls are not priced.` : `friskme's own calls cost ${formatUsd(r.llm.costUsd)} at list price.`}`
       : 'nothing (--no-llm).'
   }</li>
 ${r.llm.groupingFellBack ? '<li><b>fallback</b> grouping failed twice, so intents are work categories.</li>' : ''}
@@ -552,9 +552,10 @@ function analyzerInfo(r: Report) {
   return ANALYZERS[r.llm.analyzer ?? 'claude']
 }
 
-/** `Claude Code`, `Codex`, or `Claude Code and Codex`: whichever agents the report covers. */
+/** `Codex`, `Claude Code and Codex`, `Claude Code, Codex and Pi`: whichever agents the report covers. */
 function agentsTitle(r: Report): string {
   const names = r.overview.agents.map((a) => a.name)
   if (names.length === 0) return 'coding-agent'
-  return names.join(' and ')
+  if (names.length === 1) return names[0]!
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
 }

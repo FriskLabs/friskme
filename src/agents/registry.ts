@@ -2,10 +2,15 @@ import { existsSync } from 'node:fs'
 import type { AgentId } from '../types.ts'
 import { claudeSource } from './claude/index.ts'
 import { codexSource } from './codex/index.ts'
+import { piSource } from './pi/index.ts'
 import type { AgentSource, SourceRoot } from './types.ts'
 
 /** Every agent frisk can read, in display order. */
-export const ALL_AGENTS: readonly AgentSource[] = [claudeSource, codexSource]
+export const ALL_AGENTS: readonly AgentSource[] = [
+  claudeSource,
+  codexSource,
+  piSource,
+]
 
 export function agentById(id: AgentId): AgentSource | undefined {
   return ALL_AGENTS.find((a) => a.id === id)
@@ -15,7 +20,7 @@ export function agentName(id: AgentId): string {
   return agentById(id)?.displayName ?? id
 }
 
-/** Parses `--agent claude,codex`. Throws on an unknown or unsupported id. */
+/** Parses `--agent claude,codex,pi`. Throws on an unknown or unsupported id. */
 export function parseAgentList(value: string): AgentId[] {
   const ids = value
     .split(',')

@@ -19,15 +19,16 @@ Usage:
                              Manage the optional PII model (~/.frisk/models)
 
 Options:
-  --agent <list>               Agents to read: claude, codex, or both comma-separated
+  --agent <list>               Agents to read: claude, codex, pi, comma-separated
                                (default: every agent whose session folder exists)
   --since <30d|4w|YYYY-MM-DD>  Only sessions active since then (default 30d)
   --project <substring>        Only sessions whose project path contains this
   --max-sessions <n>           Analyze at most the n most recent sessions
-  --analyzer <claude|codex>    CLI that labels sessions: claude -p or codex exec
-                               (default: claude if logged in, else codex)
+  --analyzer <claude|codex|pi> CLI that labels sessions: claude -p, codex exec
+                               or pi -p (default: claude if logged in, else
+                               codex; pi only when asked)
   --model <name>               Model for the analyzer (default: haiku for claude,
-                               Codex's own default for codex)
+                               Codex's own default for codex, pi's for pi)
   --no-llm                     Skip all model calls; deterministic sections only
   --out <dir>                  Output directory (default ./frisk-report)
   --json                       Print report.json to stdout (summary goes to stderr)
@@ -45,6 +46,8 @@ Options:
 Reads, read-only:
   Claude Code  ${'$'}CLAUDE_CONFIG_DIR/projects or ~/.claude/projects
   Codex        ${'$'}CODEX_HOME/sessions or ~/.codex/sessions
+  Pi           ${'$'}PI_CODING_AGENT_SESSION_DIR, ${'$'}PI_CODING_AGENT_DIR/sessions
+               or ~/.pi/agent/sessions
 `
 
 /** `30d`, `4w`, `12h` or an ISO date → epoch ms. */

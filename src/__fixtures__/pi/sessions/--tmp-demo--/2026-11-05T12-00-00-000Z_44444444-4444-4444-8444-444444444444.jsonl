@@ -1,0 +1,2 @@
+{"type":"session","version":3,"id":"44444444-4444-4444-8444-444444444444","timestamp":"2026-11-05T12:00:00.000Z","cwd":"/tmp/demo"}
+{"type":"model_change","id":"a0000001","parentId":null,"timestamp":"2026-11-05T12:00:01.000Z","provider":"anthropic","modelId":"claude-opus-5-5"}

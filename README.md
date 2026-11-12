@@ -45,7 +45,7 @@ friskme                       # last 30 days, every agent found; asks before any
 friskme --agent codex         # only Codex sessions
 friskme --analyzer codex      # label with codex exec instead of claude -p
 friskme --yes --since 2w      # no prompt, last two weeks
-friskme --project my-repo     # only sessions whose working directory contains "my-repo"
+friskme --project my-repo     # only sessions whose project path contains "my-repo"
 friskme --no-llm              # deterministic sections only, nothing sent anywhere
 friskme --json > report.json  # machine-readable; the summary goes to stderr
 ```
@@ -81,6 +81,8 @@ Output:
 By default friskme reads every agent whose folder exists; `--agent` narrows it down. Both agents' sessions go into one report, each tagged with its agent, with sessions, tokens and dollars broken down per agent.
 
 The access is strictly read-only: friskme lists directories and reads files, and never writes, moves or deletes anything there.
+
+To tell which repo a session belongs to, friskme also reads one small file outside these folders: the `.git` file in the session's working directory, if there is one. A git worktree's `.git` file points at its main repo, so sessions in worktrees count under that repo instead of showing up as projects of their own.
 
 Claude Code deletes transcripts older than `cleanupPeriodDays` (30 by default), so about a month of history is the most there is.
 
@@ -214,6 +216,7 @@ All counts, shares and costs are computed by friskme, not by the model.
   - _Repeated commands_ are the same shell command (`Bash` in Claude Code; `exec_command`, `shell` and `shell_command` in Codex) 3+ times in a session. `sleep` polling is excluded.
   - An _error streak_ is 3+ failed tool calls in a row. A Codex tool call failed when its output reports a non-zero exit code.
   - An _interrupted ending_ is a session that ended right after you interrupted the agent.
+- **Projects** are the repo a session ran in. A git worktree counts under its main repo: friskme follows the worktree's `.git` file, or, if the worktree is gone, recognizes `<repo>/.claude/worktrees/<name>`, `<repo>/.worktrees/<name>` and `superpowers/worktrees/<repo>/<name>`. Any other folder is its own project.
 - **A repeated workflow** is 4+ sessions in one intent whose tool mix has cosine similarity ≥ 0.8 with the most typical one.
 
 ## Development

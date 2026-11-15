@@ -57,4 +57,16 @@ describe('standalone', () => {
       ),
     ).toEqual([])
   })
+
+  // Install-time scripts run on every `bun install`, in CI and on
+  // contributors' machines, so the repo has none.
+  test('no lifecycle scripts in package.json', () => {
+    const pkg = JSON.parse(readFileSync(join(APP, 'package.json'), 'utf8'))
+    const lifecycle = Object.keys(pkg.scripts ?? {}).filter((name) =>
+      /^(pre|post)?(install|prepare|prepublish|prepublishOnly|prepack|postpack|uninstall)$/.test(
+        name,
+      ),
+    )
+    expect(lifecycle).toEqual([])
+  })
 })

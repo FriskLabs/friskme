@@ -1,0 +1,49 @@
+name: Bug report
+description: Something in friskme doesn't work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Don't paste session transcripts, `frisk-report/` files or secrets here.** They can contain private code and credentials. Describe the problem, or build a small synthetic example.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Run `npx friskme --no-llm --agent codex`
+        2. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: friskme version
+      description: Output of `frisk --version`
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How you installed it
+      options: [npx / npm, Release binary, From source]
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: OS, Node version and agent
+      placeholder: macOS 15, Node 22.15, Claude Code 2.x
+  - type: textarea
+    id: output
+    attributes:
+      label: Error output
+      description: Terminal output, with any paths or secrets removed.
+      render: text

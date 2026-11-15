@@ -21,7 +21,7 @@ To install the `friskme` command, run `npm i -g friskme`.
 
 The npm package is one JavaScript file of about 1 MB, with no dependencies and nothing to compile. npm downloads it at install time; friskme itself downloads nothing. It's tested on macOS and Linux. It should also run on Windows and on Alpine and other musl-based Linux distributions, but those aren't tested. On Windows, the analyzer must be a native `claude.exe`, `codex.exe` or `pi.exe`, not an npm `.cmd` shim. `--pii-model` works only on macOS (Apple silicon or Intel) and Linux x64.
 
-If you don't have Node, download a standalone binary (about 70–90 MB) from [GitHub Releases](https://github.com/FriskLabs/frisk-cli/releases) and put it on your `PATH`. Each release includes a `SHA256SUMS` file.
+If you don't have Node, download a standalone binary (about 70–90 MB) from [GitHub Releases](https://github.com/FriskLabs/friskme/releases) and put it on your `PATH`. Each release includes a `SHA256SUMS` file.
 
 | Platform             | File                 |
 | -------------------- | -------------------- |
@@ -255,15 +255,16 @@ bun run dev -- --no-llm
 
 friskme is self-contained: it uses no FriskAI workspace packages, and `src/standalone.test.ts` fails if one is imported.
 
-To add an agent, see "Adding an agent" in `AGENTS.md`.
+To add an agent, see "Adding an agent" in `AGENTS.md`. To contribute, see [CONTRIBUTING.md](CONTRIBUTING.md). Report security issues privately, as described in [SECURITY.md](SECURITY.md).
 
 ### Releasing
 
 friskme is published to npm as one package holding `dist/frisk.js`: friskme and its dependencies, bundled for Node by `scripts/bundle.ts`. The compiled binaries go to GitHub Releases only. To release:
 
-1. Set the same version in `package.json` and `FRISK_VERSION` (`src/constants.ts`), then commit.
-2. Push a tag: `git tag v0.1.0 && git push origin v0.1.0`.
+1. Set the same version in `package.json` and `FRISK_VERSION` (`src/constants.ts`), and merge that through a PR.
+2. Push a tag from the merged `main`: `git tag v0.1.0 && git push origin v0.1.0`. Only maintainers can push `v*` tags.
+3. Approve the run's `release` environment deployment in the Actions tab.
 
-`.github/workflows/release.yml` runs the checks, builds every binary and the Node bundle, lays out the package with `scripts/pack-npm.ts`, installs it and runs `scripts/smoke.sh` against it, publishes to npm, and creates a GitHub Release that has the binaries and `SHA256SUMS`. It publishes through npm trusted publishing (OIDC), so no npm token is stored: `friskme` on npmjs.com trusts the `FriskLabs/frisk-cli` repository's `release.yml` workflow.
+`.github/workflows/release.yml` runs the checks, builds every binary and the Node bundle, lays out the package with `scripts/pack-npm.ts`, installs it and runs `scripts/smoke.sh` against it, publishes to npm, and creates a GitHub Release that has the binaries and `SHA256SUMS`. It publishes through npm trusted publishing (OIDC), so no npm token is stored: `friskme` on npmjs.com trusts the `FriskLabs/friskme` repository's `release.yml` workflow, and every version carries npm provenance.
 
 `src/lib/` holds three modules copied from FriskAI's control-plane monorepo on 2026-11-11: `sequence-fold.ts` (the loop fold), `command-family.ts` (Bash command families) and `mcp-tool-name.ts`. They no longer track the originals.

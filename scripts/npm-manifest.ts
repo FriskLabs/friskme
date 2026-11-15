@@ -22,9 +22,10 @@ export function packageManifest(info: RootInfo): Record<string, unknown> {
     license: info.license,
     repository: {
       type: 'git',
-      url: 'git+https://github.com/FriskLabs/frisk-cli.git',
+      url: 'git+https://github.com/FriskLabs/friskme.git',
     },
-    homepage: 'https://github.com/FriskLabs/frisk-cli#readme',
+    homepage: 'https://github.com/FriskLabs/friskme#readme',
+    bugs: { url: 'https://github.com/FriskLabs/friskme/issues' },
     type: 'module',
     // `friskme` makes `npx friskme` work; `frisk` is the command after a
     // global install.

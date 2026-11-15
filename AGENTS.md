@@ -55,6 +55,8 @@ Release tooling sits outside `src/`:
 - **Bump `PROMPT_VERSION` (`llm/prompts.ts`) whenever a prompt or schema changes.** It is part of every cache key.
 - **Runtime code runs on Node ≥ 22.15.** Use `node:*` APIs in `src/`, never `Bun.*`; tests and `scripts/` may use Bun. `src/standalone.test.ts` checks this.
 - **frisk is standalone.** No `@friskai/*` or `workspace:` dependencies, and no imports that reach outside the repo. `src/standalone.test.ts` enforces this.
+- **No lifecycle scripts.** `package.json` has no `preinstall`, `postinstall`, `prepare` or similar scripts, and CI installs with `--ignore-scripts`. `src/standalone.test.ts` enforces this.
+- **Workflows stay locked down.** Pin every action to a commit SHA, keep `persist-credentials: false` on checkout, and never use `pull_request_target`.
 
 ## Tests
 
@@ -82,8 +84,9 @@ Release tooling sits outside `src/`:
 
 ## Workflow
 
-- Track work in GitHub issues on `FriskLabs/frisk-cli`. Reference the issue in commits (`Refs #N`) and close it from the PR (`Closes #N`).
-- To release, follow README "Releasing": keep `package.json` `version` and `FRISK_VERSION` equal, then push a `v<version>` tag. Never publish to npm by hand.
+- Track work in GitHub issues on `FriskLabs/friskme`. Reference the issue in commits (`Refs #N`) and close it from the PR (`Closes #N`).
+- Changes reach `main` only through reviewed, squash-merged PRs. See `CONTRIBUTING.md`.
+- To release, follow README "Releasing": keep `package.json` `version` and `FRISK_VERSION` equal, push a `v<version>` tag, then approve the `release` environment. Never publish to npm by hand.
 
 ## Docs
 

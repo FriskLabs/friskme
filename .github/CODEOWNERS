@@ -1,0 +1,7 @@
+# Maintainers review every change. Workflows, build scripts and package.json
+# run in CI and the release pipeline, so they are listed explicitly.
+*               @npalrecha @john01kpeazu
+/.github/       @npalrecha @john01kpeazu
+/scripts/       @npalrecha @john01kpeazu
+/package.json   @npalrecha @john01kpeazu
+/bun.lock       @npalrecha @john01kpeazu

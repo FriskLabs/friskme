@@ -43,7 +43,7 @@ describe('resolveProject', () => {
   })
 
   test('a sibling worktree follows its .git file to the main repo', () => {
-    const main = join(tmp, 'control-plane')
+    const main = join(tmp, 'my-app')
     const wt = join(tmp, 'code-review-01')
     mkdirSync(join(main, '.git', 'worktrees', 'code-review-01'), {
       recursive: true,
@@ -53,7 +53,7 @@ describe('resolveProject', () => {
       join(wt, '.git'),
       `gitdir: ${join(main, '.git', 'worktrees', 'code-review-01')}\n`,
     )
-    expect(resolveProject(wt)).toEqual({ root: main, label: 'control-plane' })
+    expect(resolveProject(wt)).toEqual({ root: main, label: 'my-app' })
   })
 
   test('a relative gitdir and a bare repo resolve too', () => {

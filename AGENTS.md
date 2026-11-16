@@ -35,7 +35,7 @@ The pipeline runs in this order, all under `src/`:
 - `sensitive/`: secret and PII rules, validators, masking and the summary. `model/` holds the opt-in NER model (download, manifest, worker).
 - `report/`: aggregation, terminal output, HTML, JSON and skill files
 - `cache.ts`: the `~/.frisk/cache` store (`FRISK_CACHE_DIR` overrides it)
-- `lib/`: three modules copied from the FriskAI monorepo. They no longer track the originals, so edit them freely.
+- `lib/`: shared helpers: the loop fold (`sequence-fold.ts`), Bash command families (`command-family.ts`) and MCP tool-name parsing (`mcp-tool-name.ts`).
 
 Release tooling sits outside `src/`:
 

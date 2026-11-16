@@ -1,9 +1,3 @@
-/**
- * Copied from FriskAI's control-plane monorepo (packages/coding-action-types/src/mcp-tool-name.ts) on 2026-11-11 so frisk
- * builds without workspace packages. It no longer tracks the original: a
- * change there is not picked up here, and vice versa.
- * `mcpServerIdentity` is not kept.
- */
 const MCP_PREFIX = 'mcp__'
 const SEPARATOR = '__'
 

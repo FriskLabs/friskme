@@ -1,20 +1,6 @@
 /**
- * Copied from FriskAI's control-plane monorepo (packages/sequence-fold) on 2026-11-11 so frisk
- * builds without workspace packages. It no longer tracks the original: a
- * change there is not picked up here, and vice versa.
- * Only `compressSteps` and its types are kept.
- */
-/**
  * Collapses an ordered run of steps into individual items and repeated
- * groups. This is the one fold implementation shared by every caller that
- * needs to detect exact consecutive repeats in an ordered sequence: the web
- * app's sequence detail views and chart loop band (`compressSequence` /
- * `compressPath` in `apps/web/lib/render/compress-sequence.ts` and
- * `apps/web/components/charts/path-band-fold.ts`), and the server-side
- * hidden-loop-motif detector (`apps/workers/src/lib/finding/`). All three
- * delegate to `compressSteps` below rather than each re-solving the same
- * problem, so a session folds identically no matter where it's rendered or
- * detected.
+ * groups, to detect exact consecutive repeats in an ordered sequence.
  *
  * Long agent paths are overwhelmingly repetitive — a 50-step path typically
  * cycles fewer than 10 distinct tools — so folding exact consecutive repeats
@@ -127,10 +113,8 @@ function findGroupAt<T>(
 }
 
 /**
- * The one fold implementation. Domain-specific entry points (`compressSequence`
- * in `apps/web/lib/render/compress-sequence.ts`, `compressPath` in
- * `apps/web/components/charts/path-band-fold.ts`) are thin wrappers that
- * supply their own key selector rather than reimplementing the scan.
+ * The fold. Callers supply their own key selector rather than reimplementing
+ * the scan.
  */
 export function compressSteps<T>(
   steps: T[],

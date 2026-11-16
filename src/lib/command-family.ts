@@ -1,8 +1,3 @@
-/**
- * Copied from FriskAI's control-plane monorepo (packages/coding-action-types/src/command-family.ts and coding-action.ts) on 2026-11-11 so frisk
- * builds without workspace packages. It no longer tracks the original: a
- * change there is not picked up here, and vice versa.
- */
 export const COMMAND_FAMILIES = [
   'git',
   'package_manager',

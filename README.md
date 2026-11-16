@@ -253,7 +253,7 @@ bun run biome:check
 bun run dev -- --no-llm
 ```
 
-friskme is self-contained: it uses no FriskAI workspace packages, and `src/standalone.test.ts` fails if one is imported.
+friskme is self-contained: it has no workspace dependencies, and `src/standalone.test.ts` fails if one is added.
 
 To add an agent, see "Adding an agent" in `AGENTS.md`. To contribute, see [CONTRIBUTING.md](CONTRIBUTING.md). Report security issues privately, as described in [SECURITY.md](SECURITY.md).
 
@@ -266,5 +266,3 @@ friskme is published to npm as one package holding `dist/frisk.js`: friskme and 
 3. Approve the run's `release` environment deployment in the Actions tab.
 
 `.github/workflows/release.yml` runs the checks, builds every binary and the Node bundle, lays out the package with `scripts/pack-npm.ts`, installs it and runs `scripts/smoke.sh` against it, publishes to npm, and creates a GitHub Release that has the binaries and `SHA256SUMS`. It publishes through npm trusted publishing (OIDC), so no npm token is stored: `friskme` on npmjs.com trusts the `FriskLabs/friskme` repository's `release.yml` workflow, and every version carries npm provenance.
-
-`src/lib/` holds three modules copied from FriskAI's control-plane monorepo on 2026-11-11: `sequence-fold.ts` (the loop fold), `command-family.ts` (Bash command families) and `mcp-tool-name.ts`. They no longer track the originals.

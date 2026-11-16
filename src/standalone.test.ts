@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 /**
- * frisk is meant to live in its own repo: no FriskAI workspace packages and no
+ * frisk is meant to live in its own repo: no workspace packages and no
  * imports reaching outside this app. This keeps one from creeping back in.
  */
 const APP = join(import.meta.dir, '..')

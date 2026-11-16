@@ -1,7 +1,6 @@
 /**
  * A partial share must never print as 100% (or 0%). Precision is raised until
  * the printed value stops lying, falling back to "<0.01%" / ">99.99%".
- * Ported from FriskAI's web app (`formatShare`); keep the two in step by hand.
  */
 export function formatShare(n: number, digits = 1): string {
   const v = n * 100
